@@ -54,9 +54,11 @@ def _download_with_retry(tickers: list) -> pd.DataFrame:
 
 
 # ── 1. DATA ──────────────────────────────────────────────────
+import requests
+from requests.adapters import HTTPAdapter
+
 def fetch_data(tickers: list) -> tuple:
-    """Download price data with caching + retry to avoid rate limits."""
-    cache_key = ",".join(sorted(tickers))
+    cache_key = ','.join(sorted(tickers))
     now = time.time()
 
     if cache_key in _cache:
@@ -65,9 +67,25 @@ def fetch_data(tickers: list) -> tuple:
             print("📦 Using cached data")
             return cached_data
 
-    raw = _download_with_retry(tickers)
+    # Create session with browser headers to bypass IP blocking
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+    })
 
-    # Handle both single and multi-ticker downloads
+    raw = yf.download(
+        tickers,
+        start=START_DATE,
+        end=END_DATE,
+        progress=False,
+        auto_adjust=True,
+        session=session
+    )
+
     if isinstance(raw.columns, pd.MultiIndex):
         prices = raw['Close']
     else:
@@ -77,17 +95,13 @@ def fetch_data(tickers: list) -> tuple:
         prices = prices.to_frame(name=tickers[0])
 
     prices = prices.dropna(axis=1, how='all').ffill().dropna()
-
     valid_tickers = list(prices.columns)
+
     if len(valid_tickers) < 2:
-        raise ValueError(
-            f"Only {len(valid_tickers)} ticker(s) returned valid data. "
-            "Please check your tickers and try again."
-        )
+        raise ValueError("Not enough valid tickers returned.")
 
     returns = prices.pct_change().dropna()
     result  = (prices, returns, valid_tickers)
-
     _cache[cache_key] = (now, result)
     return result
 
