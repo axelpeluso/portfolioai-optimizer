@@ -1,17 +1,21 @@
 # ============================================================
-# optimizer.py — Core ML + MPT Logic (Fixed)
+# optimizer.py — Core ML + MPT Logic
 # ============================================================
+
+import os
+import time
+import warnings
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import requests
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 from scipy.optimize import minimize
-import warnings
+
 warnings.filterwarnings('ignore')
 
 # ── CONSTANTS ────────────────────────────────────────────────
@@ -19,47 +23,20 @@ START_DATE = "2021-01-01"
 END_DATE   = "2025-12-31"
 RISK_FREE  = 0.05
 
-# ── CACHE + RETRY ────────────────────────────────────────────
-import time
-_cache = {}
-CACHE_TTL    = 3600  # 1 hour
-MAX_RETRIES  = 4
-BASE_BACKOFF = 5     # seconds
+# ── CACHE ────────────────────────────────────────────────────
+_cache    = {}
+CACHE_TTL = 3600  # 1 hour
 
-
-def _download_with_retry(tickers: list) -> pd.DataFrame:
-    """yf.download with exponential backoff on rate-limit errors."""
-    last_err = None
-    for attempt in range(MAX_RETRIES):
-        try:
-            raw = yf.download(
-                tickers, start=START_DATE, end=END_DATE,
-                progress=False, auto_adjust=True, threads=False,
-            )
-            if raw is not None and not raw.empty:
-                return raw
-            last_err = RuntimeError("yfinance returned empty frame")
-        except Exception as e:
-            last_err = e
-            msg = str(e).lower()
-            if "rate" not in msg and "too many" not in msg and attempt > 0:
-                break
-        wait = BASE_BACKOFF * (2 ** attempt)
-        print(f"⏳ yfinance retry {attempt + 1}/{MAX_RETRIES} in {wait}s ({last_err})")
-        time.sleep(wait)
-    raise RuntimeError(
-        "Yahoo Finance rate-limited or unreachable after retries. "
-        "Please wait a few minutes and try again."
-    ) from last_err
+# ── ALPHA VANTAGE ────────────────────────────────────────────
+ALPHA_VANTAGE_URL          = "https://www.alphavantage.co/query"
+ALPHA_VANTAGE_REQ_INTERVAL = 12  # seconds between requests (free tier = 5/min)
 
 
 # ── 1. DATA ──────────────────────────────────────────────────
-import requests
-from requests.adapters import HTTPAdapter
-
 def fetch_data(tickers: list) -> tuple:
-    cache_key = ','.join(sorted(tickers))
-    now = time.time()
+    """Fetch daily close prices via Alpha Vantage with cache + per-ticker pacing."""
+    cache_key = ",".join(sorted(tickers))
+    now       = time.time()
 
     if cache_key in _cache:
         cached_time, cached_data = _cache[cache_key]
@@ -67,38 +44,76 @@ def fetch_data(tickers: list) -> tuple:
             print("📦 Using cached data")
             return cached_data
 
-    # Create session with browser headers to bypass IP blocking
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-    })
+    api_key = os.environ.get("ALPHA_VANTAGE_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "ALPHA_VANTAGE_KEY environment variable is not set. "
+            "Get a free key at https://www.alphavantage.co/support/#api-key"
+        )
 
-    raw = yf.download(
-        tickers,
-        start=START_DATE,
-        end=END_DATE,
-        progress=False,
-        auto_adjust=True,
-        session=session
-    )
+    series: dict = {}
+    for i, ticker in enumerate(tickers):
+        # Free tier = 5 req/min → 12s between requests
+        if i > 0:
+            time.sleep(ALPHA_VANTAGE_REQ_INTERVAL)
 
-    if isinstance(raw.columns, pd.MultiIndex):
-        prices = raw['Close']
-    else:
-        prices = raw[['Close']].rename(columns={'Close': tickers[0]})
+        try:
+            resp = requests.get(
+                ALPHA_VANTAGE_URL,
+                params={
+                    "function":   "TIME_SERIES_DAILY",
+                    "symbol":     ticker,
+                    "outputsize": "full",
+                    "apikey":     api_key,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except Exception as e:
+            print(f"⚠️  Skipping {ticker}: {e}")
+            continue
 
-    if isinstance(prices, pd.Series):
-        prices = prices.to_frame(name=tickers[0])
+        # Alpha Vantage signals throttling / tier errors via Note / Information / Error Message
+        err_key = next(
+            (k for k in ("Note", "Information", "Error Message") if k in payload),
+            None,
+        )
+        if err_key:
+            print(f"⚠️  Skipping {ticker}: {payload[err_key]}")
+            continue
 
-    prices = prices.dropna(axis=1, how='all').ffill().dropna()
+        ts = payload.get("Time Series (Daily)")
+        if not ts:
+            print(f"⚠️  Skipping {ticker}: no time series in response")
+            continue
+
+        df       = pd.DataFrame.from_dict(ts, orient="index")
+        df.index = pd.to_datetime(df.index)
+        df       = df.sort_index()
+        close    = pd.to_numeric(df["4. close"], errors="coerce")
+        close    = close.loc[START_DATE:END_DATE]
+
+        if close.empty:
+            print(f"⚠️  Skipping {ticker}: no rows in {START_DATE}..{END_DATE}")
+            continue
+
+        series[ticker] = close
+        print(f"✅ Fetched {ticker} ({len(close)} days)")
+
+    if len(series) < 2:
+        raise ValueError(
+            f"Only {len(series)} ticker(s) returned valid data from Alpha Vantage. "
+            "Check tickers, API key, and rate limits."
+        )
+
+    prices        = pd.DataFrame(series).ffill().dropna()
     valid_tickers = list(prices.columns)
 
     if len(valid_tickers) < 2:
-        raise ValueError("Not enough valid tickers returned.")
+        raise ValueError(
+            f"After alignment, only {len(valid_tickers)} ticker(s) had valid data."
+        )
 
     returns = prices.pct_change().dropna()
     result  = (prices, returns, valid_tickers)
