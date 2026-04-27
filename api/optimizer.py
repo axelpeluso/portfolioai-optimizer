@@ -1,124 +1,40 @@
 # ============================================================
-# optimizer.py — Core ML + MPT Logic
+# optimizer.py — Core ML + MPT Logic (Fixed)
 # ============================================================
-
-import os
-import time
-import warnings
 
 import numpy as np
 import pandas as pd
-import requests
+import os
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 from scipy.optimize import minimize
-
+import warnings
 warnings.filterwarnings('ignore')
 
 # ── CONSTANTS ────────────────────────────────────────────────
-START_DATE = "2021-01-01"
+START_DATE = "2021-11-10"
 END_DATE   = "2025-12-31"
 RISK_FREE  = 0.05
-
-# ── CACHE ────────────────────────────────────────────────────
-_cache    = {}
-CACHE_TTL = 3600  # 1 hour
-
-# ── ALPHA VANTAGE ────────────────────────────────────────────
-ALPHA_VANTAGE_URL          = "https://www.alphavantage.co/query"
-ALPHA_VANTAGE_REQ_INTERVAL = 12  # seconds between requests (free tier = 5/min)
 
 
 # ── 1. DATA ──────────────────────────────────────────────────
 def fetch_data(tickers: list) -> tuple:
-    """Fetch daily close prices via Alpha Vantage with cache + per-ticker pacing."""
-    cache_key = ",".join(sorted(tickers))
-    now       = time.time()
-
-    if cache_key in _cache:
-        cached_time, cached_data = _cache[cache_key]
-        if now - cached_time < CACHE_TTL:
-            print("📦 Using cached data")
-            return cached_data
-
-    api_key = os.environ.get("ALPHA_VANTAGE_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "ALPHA_VANTAGE_KEY environment variable is not set. "
-            "Get a free key at https://www.alphavantage.co/support/#api-key"
-        )
-
-    series: dict = {}
-    for i, ticker in enumerate(tickers):
-        # Free tier = 5 req/min → 12s between requests
-        if i > 0:
-            time.sleep(ALPHA_VANTAGE_REQ_INTERVAL)
-
-        try:
-            resp = requests.get(
-                ALPHA_VANTAGE_URL,
-                params={
-                    "function":   "TIME_SERIES_DAILY",
-                    "symbol":     ticker,
-                    "outputsize": "full",
-                    "apikey":     api_key,
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-        except Exception as e:
-            print(f"⚠️  Skipping {ticker}: {e}")
-            continue
-
-        # Alpha Vantage signals throttling / tier errors via Note / Information / Error Message
-        err_key = next(
-            (k for k in ("Note", "Information", "Error Message") if k in payload),
-            None,
-        )
-        if err_key:
-            print(f"⚠️  Skipping {ticker}: {payload[err_key]}")
-            continue
-
-        ts = payload.get("Time Series (Daily)")
-        if not ts:
-            print(f"⚠️  Skipping {ticker}: no time series in response")
-            continue
-
-        df       = pd.DataFrame.from_dict(ts, orient="index")
-        df.index = pd.to_datetime(df.index)
-        df       = df.sort_index()
-        close    = pd.to_numeric(df["4. close"], errors="coerce")
-        close    = close.loc[START_DATE:END_DATE]
-
-        if close.empty:
-            print(f"⚠️  Skipping {ticker}: no rows in {START_DATE}..{END_DATE}")
-            continue
-
-        series[ticker] = close
-        print(f"✅ Fetched {ticker} ({len(close)} days)")
-
-    if len(series) < 2:
-        raise ValueError(
-            f"Only {len(series)} ticker(s) returned valid data from Alpha Vantage. "
-            "Check tickers, API key, and rate limits."
-        )
-
-    prices        = pd.DataFrame(series).ffill().dropna()
+    """Load price data from bundled CSV and compute daily returns."""
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    CSV_PATH = os.path.join(BASE_DIR, "prices.csv")
+    df = pd.read_csv(CSV_PATH, index_col=0, parse_dates=True)
+    available = [t for t in tickers if t in df.columns]
+    missing = [t for t in tickers if t not in df.columns]
+    if missing:
+        print(f"Warning: tickers not in CSV (skipping): {missing}")
+    prices = df[available].loc[START_DATE:END_DATE]
+    prices = prices.dropna(axis=1, how="all")
     valid_tickers = list(prices.columns)
-
-    if len(valid_tickers) < 2:
-        raise ValueError(
-            f"After alignment, only {len(valid_tickers)} ticker(s) had valid data."
-        )
-
     returns = prices.pct_change().dropna()
-    result  = (prices, returns, valid_tickers)
-    _cache[cache_key] = (now, result)
-    return result
+    return prices, returns, valid_tickers
 
 
 # ── 2. FEATURES ──────────────────────────────────────────────
