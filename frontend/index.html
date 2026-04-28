@@ -419,9 +419,14 @@ tbody td:nth-child(2){text-align:left}
         <!-- STAT ROW -->
         <div class="stat-row fade d1">
           <div class="stat">
-            <div class="stat-label">Risk Score</div>
-            <div class="stat-val col-t" id="s-risk">—</div>
-            <div class="stat-sub" id="s-risklv">MLP Neural Network</div>
+            <div class="stat-label">Current Volatility</div>
+            <div class="stat-val col-t" id="s-cv">—</div>
+            <div class="stat-sub">annualized</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Optimal Volatility</div>
+            <div class="stat-val col-g" id="s-ov">—</div>
+            <div class="stat-sub">annualized</div>
           </div>
           <div class="stat">
             <div class="stat-label">Current Return</div>
@@ -671,8 +676,8 @@ function render(data, holdings) {
 
   // Stats
   const rc = risk_score < .35 ? 'col-g' : risk_score < .65 ? 'col-a' : 'col-r';
-  setText('s-risk', risk_score.toFixed(4), rc);
-  setText('s-risklv', risk_level + ' risk environment');
+  setText('s-cv', pct(cm.volatility));
+  setText('s-ov', pct(opt.volatility), 'col-g');
   setText('s-cr', pct(cm.return));
   setText('s-or', pct(opt.return), 'col-g');
   setText('s-cs', cm.sharpe.toFixed(3));
