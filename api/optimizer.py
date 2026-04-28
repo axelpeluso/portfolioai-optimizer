@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore')
 
 # ── CONSTANTS ────────────────────────────────────────────────
 START_DATE = "2021-11-10"
-END_DATE   = "2025-12-31"
+END_DATE   = "2026-04-26"
 RISK_FREE  = 0.05
 
 
