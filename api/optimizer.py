@@ -12,7 +12,42 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 from scipy.optimize import minimize
 import warnings
-warnings.filterwarnings('ignore')
+import logging
+import hashlib
+import joblib
+from pathlib import Path
+
+CACHE_DIR = Path(__file__).parent / ".model_cache"
+CACHE_DIR.mkdir(exist_ok=True)
+
+
+def _cache_key(tickers: list) -> str:
+    key = "_".join(sorted(tickers))
+    return hashlib.md5(key.encode()).hexdigest()[:10]
+
+
+def _save_cache(key, kmeans_feats, rf_preds, rf_scores, risk_score):
+    joblib.dump({
+        'kmeans_feats': kmeans_feats,
+        'rf_preds':     rf_preds,
+        'rf_scores':    rf_scores,
+        'risk_score':   risk_score,
+    }, CACHE_DIR / f"{key}.pkl")
+
+
+def _load_cache(key):
+    path = CACHE_DIR / f"{key}.pkl"
+    if path.exists():
+        return joblib.load(path)
+    return None
+
+
+logging.basicConfig(
+    filename='portfolio.log',
+    level=logging.WARNING,
+    format='%(asctime)s %(levelname)s %(message)s'
+)
+warnings.filterwarnings('ignore', category=UserWarning)  # solo sklearn verbosity
 
 # ── CONSTANTS ────────────────────────────────────────────────
 START_DATE = "2021-11-10"
@@ -176,7 +211,8 @@ def run_random_forest(returns: pd.DataFrame) -> tuple:
                 (last > 0).sum() / 60,
                 last.iloc[-1] / (last.mean() + 1e-9) - 1,
             ]])
-            rf_predictions[ticker] = rf.predict(sc.transform(lX))[0] * 4
+            quarterly = rf.predict(sc.transform(lX))[0]
+            rf_predictions[ticker] = (1 + quarterly) ** 4 - 1
 
         except Exception:
             continue
@@ -280,28 +316,38 @@ def run_optimizer(tickers, expected_returns, cov_matrix,
     constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
     w0          = np.ones(n) / n
 
-    # Max Sharpe
-    res   = minimize(
+# Max Sharpe
+    res = minimize(
         lambda w: -portfolio_performance(w, expected_returns, cov_matrix)[2],
         w0, method='SLSQP', bounds=bounds, constraints=constraints,
         options={'maxiter': 1000, 'ftol': 1e-9}
     )
-    opt_w              = res.x
+    if not res.success:
+        import logging
+        logging.warning(f"Max-Sharpe optimizer did not converge: {res.message}")
+    opt_w = res.x
     opt_r, opt_v, opt_s = portfolio_performance(opt_w, expected_returns, cov_matrix)
 
     # Min Variance
-    res_mv             = minimize(
+    res_mv = minimize(
         lambda w: np.dot(w.T, np.dot(cov_matrix, w)),
         w0, method='SLSQP', bounds=bounds, constraints=constraints
     )
-    mv_w               = res_mv.x
-    mv_r, mv_v, mv_s   = portfolio_performance(mv_w, expected_returns, cov_matrix)
+    if not res_mv.success:
+        import logging
+        logging.warning(f"Min-Var optimizer did not converge: {res_mv.message}")
+    mv_w = res_mv.x
+    mv_r, mv_v, mv_s = portfolio_performance(mv_w, expected_returns, cov_matrix)
 
     return {
-        'optimal_weights'    : dict(zip(tickers, opt_w.tolist())),
-        'min_var_weights'    : dict(zip(tickers, mv_w.tolist())),
-        'max_sharpe_metrics' : {'return': opt_r, 'volatility': opt_v, 'sharpe': opt_s},
-        'min_var_metrics'    : {'return': mv_r, 'volatility': mv_v, 'sharpe': mv_s},
+        'optimal_weights'    : {t: float(w) for t, w in zip(tickers, opt_w)},
+        'max_sharpe_metrics' : {'return': float(opt_r),
+                                'volatility': float(opt_v),
+                                'sharpe': float(opt_s)},
+        'min_var_weights'    : {t: float(w) for t, w in zip(tickers, mv_w)},
+        'min_var_metrics'    : {'return': float(mv_r),
+                                'volatility': float(mv_v),
+                                'sharpe': float(mv_s)},
     }
 
 
@@ -326,11 +372,20 @@ def run_full_analysis(tickers: list, current_holdings: dict) -> dict:
     features    = run_kmeans(features)
     cluster_map = features['cluster_label'].to_dict()
 
-    # 4. Random Forest
-    rf_preds, rf_scores = run_random_forest(returns)
+    # 4–5. RF + MLP — use cache if available
+    cache_key = _cache_key(tickers)
+    cached    = _load_cache(cache_key)
 
-    # 5. MLP
-    risk_score = run_mlp(returns)
+    if cached:
+        logging.warning(f"Cache hit for {cache_key} — skipping RF+MLP training")
+        rf_preds   = cached['rf_preds']
+        rf_scores  = cached['rf_scores']
+        risk_score = cached['risk_score']
+    else:
+        logging.warning(f"Cache miss for {cache_key} — training RF+MLP")
+        rf_preds, rf_scores = run_random_forest(returns)
+        risk_score          = run_mlp(returns)
+        _save_cache(cache_key, features, rf_preds, rf_scores, risk_score)
 
     # 6. Blend returns
     exp_returns = np.array([
@@ -343,8 +398,10 @@ def run_full_analysis(tickers: list, current_holdings: dict) -> dict:
         for t in tickers
     ])
 
-    # 7. Covariance
-    cov_matrix = returns[tickers].cov() * 252
+    # 7. Covariance con Ledoit-Wolf shrinkage
+    from sklearn.covariance import LedoitWolf
+    lw         = LedoitWolf().fit(returns[tickers])
+    cov_matrix = lw.covariance_ * 252
 
     # 8. Optimize
     opt_result  = run_optimizer(tickers, exp_returns, cov_matrix,

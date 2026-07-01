@@ -336,6 +336,9 @@ tbody td:nth-child(2){text-align:left}
 .d3{animation-delay:.16s;opacity:0}
 .d4{animation-delay:.22s;opacity:0}
 .d5{animation-delay:.28s;opacity:0}
+.d6{animation-delay:.34s;opacity:0}
+.claude-spin{display:inline-block;width:11px;height:11px;border:1.5px solid rgba(61,214,140,.3);border-top-color:#3dd68c;border-radius:50%;animation:cspin .6s linear infinite;vertical-align:middle}
+@keyframes cspin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -523,7 +526,13 @@ tbody td:nth-child(2){text-align:left}
         <div class="card fade d5">
           <div class="card-head">
             <div class="card-title">Rebalancing Instructions</div>
-            <div class="card-meta" id="tbl-total"></div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div class="card-meta" id="tbl-total"></div>
+              <button id="claude-btn" onclick="explainWithClaude()" style="margin-left:auto;padding:5px 14px;border-radius:6px;border:1px solid #3dd68c;background:rgba(61,214,140,.08);color:#3dd68c;font-size:12px;font-family:var(--mono);cursor:pointer;display:flex;align-items:center;gap:6px">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#3dd68c" stroke-width="1"/><path d="M4 6.5C4.4 7.6 5.1 8.2 6 8.2s1.6-.6 2-1.7" stroke="#3dd68c" stroke-width="1" stroke-linecap="round"/><circle cx="4.5" cy="4.8" r=".6" fill="#3dd68c"/><circle cx="7.5" cy="4.8" r=".6" fill="#3dd68c"/></svg>
+                Explain with Claude
+              </button>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
@@ -543,6 +552,18 @@ tbody td:nth-child(2){text-align:left}
               <tbody id="tbody"></tbody>
             </table>
           </div>
+        </div>
+
+        <!-- CLAUDE AI PANEL -->
+        <div class="card fade d6" id="claude-card" style="display:none">
+          <div class="card-head">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#3dd68c" stroke-width="1.2"/><path d="M5 8.5C5.5 10 6.5 11 8 11s2.5-1 3-2.5" stroke="#3dd68c" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="6.5" r=".8" fill="#3dd68c"/><circle cx="10" cy="6.5" r=".8" fill="#3dd68c"/></svg>
+              Claude AI Analysis
+            </div>
+            <div class="card-meta" id="claude-meta">Powered by Claude Sonnet</div>
+          </div>
+          <div id="claude-out" style="font-size:13px;line-height:1.75;color:#8b92a5;padding:4px 0;white-space:pre-wrap;min-height:60px"></div>
         </div>
 
       </div><!-- /results -->
@@ -569,6 +590,7 @@ const PALETTE = ['#3dd68c','#5b9cf6','#f5a623','#f4645f','#a78bfa','#22d3ee','#8
 
 let tickers = [...DEF.tickers], cB = null, cA = null;
 let si = 0, stimer = null;
+let _lastData = null;
 const STEPS = [
   'Downloading market data 2021–2026…',
   'Running K-Means clustering…',
@@ -671,6 +693,10 @@ async function go() {
 
 // ── RENDER ──
 function render(data, holdings) {
+  _lastData = data;
+  // Reset Claude panel from any previous run
+  document.getElementById('claude-card').style.display = 'none';
+  document.getElementById('claude-out').textContent = '';
   const { risk_score, risk_level, rebalancing, optimization, current_metrics, total_value, tickers:tk } = data;
   const cm = current_metrics, opt = optimization.max_sharpe_metrics;
 
@@ -749,6 +775,56 @@ function render(data, holdings) {
     el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
     setTimeout(() => { el.style.transition = 'opacity .4s ease, transform .4s ease'; el.style.opacity = '1'; el.style.transform = 'none'; }, i*60);
   });
+}
+
+// ── CLAUDE EXPLAIN ──
+async function explainWithClaude() {
+  if (!_lastData) return;
+  const btn  = document.getElementById('claude-btn');
+  const card = document.getElementById('claude-card');
+  const out  = document.getElementById('claude-out');
+
+  card.style.display = '';
+  out.textContent = '';
+  const btnHtml = btn.innerHTML;
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="claude-spin"></span> Analyzing…';
+
+  try {
+    const res = await fetch(`${API}/explain`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ portfolio_data: _lastData })
+    });
+    if (!res.ok || !res.body) throw new Error('API error (' + res.status + ')');
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream:true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();  // keep incomplete trailing chunk
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.error)     out.textContent += '\n[error] ' + obj.error;
+          else if (obj.text) out.textContent += obj.text;
+        } catch(_) { /* ignore partial JSON */ }
+      }
+    }
+    if (!out.textContent.trim()) out.textContent = 'No analysis returned.';
+  } catch(e) {
+    out.textContent = 'Could not generate analysis: ' + e.message;
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = btnHtml;
+  }
 }
 
 function mkPie(id, labels, data) {
