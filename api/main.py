@@ -1,5 +1,6 @@
 # ============================================================
 # main.py — FastAPI Application
+# v2 - explain endpoint active
 # ============================================================
 
 from fastapi import FastAPI, HTTPException
