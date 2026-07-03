@@ -11,6 +11,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 from scipy.optimize import minimize
+import scipy.special
 import warnings
 import logging
 import hashlib
@@ -263,7 +264,7 @@ def run_mlp(returns: pd.DataFrame) -> float:
 
         p5, p95 = np.percentile(y, 5), np.percentile(y, 95)
         yn = (y - p5) / (p95 - p5 + 1e-9)
-        yn = np.clip(yn, 0, 1)
+        yn = scipy.special.expit(5 * (yn - 0.5))  # sigmoid centered at 0.5, asymptotes ~0.07 and ~0.93
 
         split  = int(len(X) * 0.8)
         sc     = StandardScaler()
@@ -291,8 +292,8 @@ def run_mlp(returns: pd.DataFrame) -> float:
         up   = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
         lX.append(float(up.stack().mean()))
 
-        score = mlp.predict(sc.transform([lX]))[0]
-        return float(np.clip(score, 0, 1))
+        raw = float(mlp.predict(sc.transform([lX]))[0])
+        return float(scipy.special.expit(5 * (raw - 0.5)))
 
     except Exception:
         return 0.3
