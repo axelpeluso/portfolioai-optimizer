@@ -261,8 +261,9 @@ def run_mlp(returns: pd.DataFrame) -> float:
         if len(X) < 60:
             return 0.3  # default if not enough data
 
-        y_min, y_max = y.min(), y.max()
-        yn = (y - y_min) / (y_max - y_min + 1e-9)
+        p5, p95 = np.percentile(y, 5), np.percentile(y, 95)
+        yn = (y - p5) / (p95 - p5 + 1e-9)
+        yn = np.clip(yn, 0, 1)
 
         split  = int(len(X) * 0.8)
         sc     = StandardScaler()
