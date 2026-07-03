@@ -339,6 +339,25 @@ tbody td:nth-child(2){text-align:left}
 .d6{animation-delay:.34s;opacity:0}
 .claude-spin{display:inline-block;width:11px;height:11px;border:1.5px solid rgba(61,214,140,.3);border-top-color:#3dd68c;border-radius:50%;animation:cspin .6s linear infinite;vertical-align:middle}
 @keyframes cspin{to{transform:rotate(360deg)}}
+/* ─── FLOATING CHAT ─── */
+.chat-fab{position:fixed;bottom:22px;right:22px;width:52px;height:52px;border-radius:50%;border:1px solid #3dd68c;background:#12151c;color:#3dd68c;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(0,0,0,.45);z-index:1000;transition:background .15s,transform .15s}
+.chat-fab:hover{background:rgba(61,214,140,.12);transform:translateY(-1px)}
+.chat-widget{position:fixed;bottom:86px;right:22px;width:min(384px,calc(100vw - 32px));height:min(560px,calc(100vh - 120px));background:#12151c;border:1px solid rgba(255,255,255,.1);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 14px 44px rgba(0,0,0,.55);z-index:1000;overflow:hidden;animation:fadeUp .25s ease}
+.chat-wg-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
+.chat-wg-title{font-size:13px;font-weight:600;color:#eef0f6;display:flex;align-items:center;gap:7px}
+.chat-wg-meta{margin-left:auto;font-family:var(--mono);font-size:10px;color:#4e5568}
+.chat-wg-close{background:none;border:none;color:#8b92a5;cursor:pointer;font-size:14px;padding:2px 4px;line-height:1}
+.chat-wg-close:hover{color:#eef0f6}
+.chat-log{flex:1;display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding:14px}
+.chat-msg{font-size:13px;line-height:1.65;padding:8px 12px;border-radius:10px;max-width:88%;white-space:pre-wrap;word-wrap:break-word}
+.chat-user{align-self:flex-end;background:rgba(91,156,246,.12);border:1px solid rgba(91,156,246,.28);color:#c7d2e6}
+.chat-ai{align-self:flex-start;background:rgba(61,214,140,.06);border:1px solid rgba(61,214,140,.16);color:#b8c0d0}
+.chat-sys{align-self:center;font-family:var(--mono);font-size:11px;color:#3dd68c;opacity:.85}
+.chat-inputrow{display:flex;gap:8px;padding:10px 12px 12px;border-top:1px solid rgba(255,255,255,.07);flex-shrink:0}
+.chat-input{flex:1;background:#0d1017;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:9px 12px;color:#eef0f6;font-size:13px;font-family:inherit;outline:none}
+.chat-input:focus{border-color:#3dd68c}
+.chat-send{padding:9px 16px;border-radius:8px;border:1px solid #3dd68c;background:rgba(61,214,140,.1);color:#3dd68c;font-size:13px;font-family:var(--mono);cursor:pointer}
+.chat-send:disabled{opacity:.5;cursor:default}
 </style>
 </head>
 <body>
@@ -561,7 +580,7 @@ tbody td:nth-child(2){text-align:left}
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#3dd68c" stroke-width="1.2"/><path d="M5 8.5C5.5 10 6.5 11 8 11s2.5-1 3-2.5" stroke="#3dd68c" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="6.5" r=".8" fill="#3dd68c"/><circle cx="10" cy="6.5" r=".8" fill="#3dd68c"/></svg>
               Claude AI Analysis
             </div>
-            <div class="card-meta" id="claude-meta">Powered by Claude Sonnet</div>
+            <div class="card-meta" id="claude-meta">Powered by claude-haiku-4-5</div>
           </div>
           <div id="claude-out" style="font-size:13px;line-height:1.75;color:#8b92a5;padding:4px 0;white-space:pre-wrap;min-height:60px"></div>
         </div>
@@ -580,6 +599,28 @@ tbody td:nth-child(2){text-align:left}
 
 </div>
 
+<!-- FLOATING CHAT ASSISTANT -->
+<button id="chat-fab" class="chat-fab" onclick="toggleChat()" title="Ask PortfolioAI" aria-label="Ask PortfolioAI">
+  <svg width="22" height="22" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#3dd68c" stroke-width="1.2"/><path d="M5 8.5C5.5 10 6.5 11 8 11s2.5-1 3-2.5" stroke="#3dd68c" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="6.5" r=".8" fill="#3dd68c"/><circle cx="10" cy="6.5" r=".8" fill="#3dd68c"/></svg>
+</button>
+<div id="chat-widget" class="chat-widget" style="display:none">
+  <div class="chat-wg-head">
+    <div class="chat-wg-title">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#3dd68c" stroke-width="1.2"/><path d="M5 8.5C5.5 10 6.5 11 8 11s2.5-1 3-2.5" stroke="#3dd68c" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="6.5" r=".8" fill="#3dd68c"/><circle cx="10" cy="6.5" r=".8" fill="#3dd68c"/></svg>
+      Ask PortfolioAI
+    </div>
+    <span class="chat-wg-meta">claude-haiku-4-5</span>
+    <button class="chat-wg-close" onclick="toggleChat()" aria-label="Close">✕</button>
+  </div>
+  <div id="chat-log" class="chat-log"></div>
+  <div class="chat-inputrow">
+    <input id="chat-input" class="chat-input" type="text" autocomplete="off"
+           placeholder="Add a ticker, change risk, ask anything…"
+           onkeydown="if(event.key==='Enter')sendChat()">
+    <button id="chat-send" class="chat-send" onclick="sendChat()">Send</button>
+  </div>
+</div>
+
 <script>
 const API = 'https://atlantis-production-58a3.up.railway.app';
 const DEF = {
@@ -591,6 +632,7 @@ const PALETTE = ['#3dd68c','#5b9cf6','#f5a623','#f4645f','#a78bfa','#22d3ee','#8
 let tickers = [...DEF.tickers], cB = null, cA = null;
 let si = 0, stimer = null;
 let _lastData = null;
+let chatHistory = [];   // {role:'user'|'assistant', content:string}
 const STEPS = [
   'Downloading market data 2021–2026…',
   'Running K-Means clustering…',
@@ -824,6 +866,115 @@ async function explainWithClaude() {
   } finally {
     btn.disabled  = false;
     btn.innerHTML = btnHtml;
+  }
+}
+
+// ── FLOATING CHAT ──
+function addBubble(cls, text) {
+  const log = document.getElementById('chat-log');
+  const el = document.createElement('div');
+  el.className = 'chat-msg ' + cls;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+function toggleChat() {
+  const wg = document.getElementById('chat-widget');
+  const open = wg.style.display === 'none' || !wg.style.display;
+  wg.style.display = open ? 'flex' : 'none';
+  if (open) {
+    if (!document.getElementById('chat-log').children.length) {
+      addBubble('chat-ai', "Hi — I'm your PortfolioAI assistant. Ask about your allocation, or say things like “add TSLA” or “make it more aggressive” and I'll re-optimize.");
+    }
+    document.getElementById('chat-input').focus();
+  }
+}
+
+// Apply an action object {add:[], remove:[], risk:...} to the ticker chips.
+// Returns true if the ticker set changed.
+function applyChatAction(action) {
+  if (!action) return false;
+  let changed = false;
+  (action.add || []).forEach(raw => {
+    const t = String(raw).toUpperCase().replace(/[^A-Z0-9\-\.]/g, '');
+    if (t && !tickers.includes(t) && tickers.length < 15) { tickers.push(t); changed = true; }
+  });
+  (action.remove || []).forEach(raw => {
+    const t = String(raw).toUpperCase().replace(/[^A-Z0-9\-\.]/g, '');
+    if (t && tickers.includes(t) && tickers.length > 2) { tickers = tickers.filter(x => x !== t); changed = true; }
+  });
+  if (changed) renderChips();
+  return changed;   // risk has no direct control; the MLP re-derives it on re-run
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const send  = document.getElementById('chat-send');
+  const text  = input.value.trim();
+  if (!text || send.disabled) return;
+
+  addBubble('chat-user', text);
+  chatHistory.push({ role:'user', content:text });
+  input.value = '';
+  input.disabled = true;
+  send.disabled  = true;
+
+  const bubble = addBubble('chat-ai', '');
+  bubble.innerHTML = '<span class="claude-spin"></span>';
+  let visible = '', reoptimize = false, action = null, gotText = false;
+
+  try {
+    const res = await fetch(`${API}/chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ messages: chatHistory, portfolio_data: _lastData })
+    });
+    if (!res.ok || !res.body) throw new Error('API error (' + res.status + ')');
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream:true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.error) { visible += '\n[error] ' + obj.error; }
+          else if (obj.text) { visible += obj.text; gotText = true; }
+          if (obj.done) { reoptimize = !!obj.reoptimize; action = obj.action || null; }
+          if (gotText) bubble.textContent = visible.trim();
+          document.getElementById('chat-log').scrollTop = 1e9;
+        } catch(_) { /* partial JSON */ }
+      }
+    }
+
+    if (!visible.trim()) bubble.textContent = '(no response)';
+    chatHistory.push({ role:'assistant', content: visible.trim() || '(no response)' });
+
+    // Apply ticker actions, then re-optimize if requested
+    const changed = applyChatAction(action);
+    if (reoptimize || changed) {
+      let note = '↻ Re-optimizing…';
+      if (action && (action.add||[]).length) note = '＋ Added ' + action.add.join(', ') + ' · re-optimizing…';
+      else if (action && (action.remove||[]).length) note = '－ Removed ' + action.remove.join(', ') + ' · re-optimizing…';
+      addBubble('chat-sys', note);
+      setTimeout(go, 500);
+    }
+  } catch(e) {
+    bubble.textContent = 'Could not reach the assistant: ' + e.message;
+  } finally {
+    input.disabled = false;
+    send.disabled  = false;
+    input.focus();
   }
 }
 

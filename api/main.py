@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import os
+import re
 import json
 import uvicorn
 
@@ -54,6 +55,16 @@ class ExplainRequest(BaseModel):
     portfolio_data: dict
 
 
+class ChatMessage(BaseModel):
+    role   : str   # "user" | "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages       : list[ChatMessage]
+    portfolio_data : Optional[dict] = None
+
+
 EXPLAIN_PROMPT = (
     "You are a senior portfolio manager. Analyze this AI-generated rebalancing "
     "and explain it in 3-4 sentences for an investor: (1) what the risk score "
@@ -61,6 +72,94 @@ EXPLAIN_PROMPT = (
     "Be direct, no bullet points.\n\n"
     "Portfolio data: {portfolio_data}"
 )
+
+CHAT_SYSTEM_PROMPT = (
+    "You are a senior portfolio manager assistant for PortfolioAI. You have "
+    "access to the user's current portfolio optimization results.\n\n"
+    "When the user asks about adding a ticker, changing risk, or re-optimizing: "
+    "give a brief 2-sentence analysis, then end your response with exactly "
+    '"[REOPTIMIZE]" on a new line to trigger a re-run.\n\n'
+    "When answering general questions: be direct and specific, under 4 sentences. "
+    "Reference actual numbers from their portfolio when available.\n\n"
+    "Never use bullet points. Always sound like a confident quant, not a "
+    "disclaimer-heavy advisor.\n\n"
+    "PORTFOLIO ACTIONS: If the user wants to add or remove tickers, after your "
+    "analysis emit a single machine-readable line exactly like:\n"
+    '[ACTION]{"add":["TSLA"],"remove":[],"risk":null}\n'
+    "Use uppercase ticker symbols; set \"risk\" to \"low\", \"medium\", \"high\", "
+    "or null. Include [REOPTIMIZE] whenever an action is emitted. The [ACTION] "
+    "and [REOPTIMIZE] tokens must be the very last thing in your reply and are "
+    "hidden from the user, so keep your natural-language answer complete without "
+    "them."
+)
+
+MODEL = "claude-haiku-4-5-20251001"
+
+
+# ── ANTHROPIC HELPERS ─────────────────────────────────────────
+def _anthropic_client():
+    """Return an Anthropic client or raise a clear HTTP error."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured on the server."
+        )
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="anthropic SDK not installed. Add it to requirements.txt."
+        )
+    return Anthropic(api_key=api_key)
+
+
+def _stream_sse(client, **kwargs):
+    """Stream a Claude message as Server-Sent Events (data: {...}\\n\\n)."""
+    def event_stream():
+        try:
+            with client.messages.stream(**kwargs) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {json.dumps({'text': text})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+CONTROL_MARKERS = ("[REOPTIMIZE]", "[ACTION]")
+
+
+def _visible_cut(buf: str) -> int:
+    """
+    Index up to which `buf` is safe to stream to the client. Holds back any
+    trailing text that has started (or completed) a control marker so tokens
+    like [ACTION]{...} and [REOPTIMIZE] never reach the user's screen.
+    """
+    for i, ch in enumerate(buf):
+        if ch != "[":
+            continue
+        tail = buf[i:]
+        for mk in CONTROL_MARKERS:
+            if mk.startswith(tail) or tail.startswith(mk):
+                return i
+    return len(buf)
+
+
+def _parse_actions(text: str) -> tuple:
+    """Extract (reoptimize: bool, action: dict|None) from the full model reply."""
+    reoptimize = "[REOPTIMIZE]" in text
+    action = None
+    m = re.search(r"\[ACTION\]\s*(\{.*?\})", text, re.DOTALL)
+    if m:
+        try:
+            action = json.loads(m.group(1))
+        except (json.JSONDecodeError, ValueError):
+            action = None
+    return reoptimize, action
+
 
 # ── ROUTES ────────────────────────────────────────────────────
 @app.get("/")
@@ -112,35 +211,62 @@ def explain(request: ExplainRequest):
     Stream a plain-language explanation of the rebalancing result from
     Claude via Server-Sent Events (SSE), so text appears word by word.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY not configured on the server."
-        )
-
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        raise HTTPException(
-            status_code=500,
-            detail="anthropic SDK not installed. Add it to requirements.txt."
-        )
-
-    client = Anthropic(api_key=api_key)
+    client = _anthropic_client()
     prompt = EXPLAIN_PROMPT.format(
         portfolio_data=json.dumps(request.portfolio_data, default=str)
     )
+    return _stream_sse(
+        client,
+        model=MODEL,
+        max_tokens=500,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+
+@app.post("/chat")
+def chat(request: ChatRequest):
+    """
+    Conversational portfolio assistant. Streams a Claude response (SSE) using
+    the PortfolioAI system prompt, with the current optimization results
+    injected as context. The model may emit "[REOPTIMIZE]" to signal the
+    frontend to re-run the optimization.
+    """
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="No messages provided.")
+
+    client = _anthropic_client()
+
+    system = CHAT_SYSTEM_PROMPT
+    if request.portfolio_data:
+        system += (
+            "\n\nCurrent portfolio optimization results (JSON):\n"
+            + json.dumps(request.portfolio_data, default=str)
+        )
+
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
     def event_stream():
+        full = ""
+        sent = 0
         try:
             with client.messages.stream(
-                model="claude-haiku-4-5-20251001",
+                model=MODEL,
                 max_tokens=500,
-                messages=[{"role": "user", "content": prompt}],
+                system=system,
+                messages=messages,
             ) as stream:
                 for text in stream.text_stream:
-                    yield f"data: {json.dumps({'text': text})}\n\n"
+                    full += text
+                    cut = _visible_cut(full)
+                    if cut > sent:
+                        yield f"data: {json.dumps({'text': full[sent:cut]})}\n\n"
+                        sent = cut
+
+            reoptimize, action = _parse_actions(full)
+            meta = {"done": True, "reoptimize": reoptimize}
+            if action is not None:
+                meta["action"] = action
+            yield f"data: {json.dumps(meta)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
