@@ -264,7 +264,7 @@ def run_mlp(returns: pd.DataFrame) -> float:
 
         p5, p95 = np.percentile(y, 5), np.percentile(y, 95)
         yn = (y - p5) / (p95 - p5 + 1e-9)
-        yn = scipy.special.expit(5 * (yn - 0.5))  # sigmoid centered at 0.5, asymptotes ~0.07 and ~0.93
+        yn = scipy.special.expit(2.5 * (yn - 0.5))  # sigmoid centered at 0.5, gentle slope
 
         split  = int(len(X) * 0.8)
         sc     = StandardScaler()
@@ -293,7 +293,7 @@ def run_mlp(returns: pd.DataFrame) -> float:
         lX.append(float(up.stack().mean()))
 
         raw = float(mlp.predict(sc.transform([lX]))[0])
-        return float(scipy.special.expit(5 * (raw - 0.5)))
+        return float(scipy.special.expit(2.5 * (raw - 0.5)))
 
     except Exception:
         return 0.3
