@@ -78,6 +78,13 @@ select.wl-input{cursor:pointer}
 .wl-status{margin-top:14px;font-size:13px;text-align:center;min-height:18px}
 .wl-status.ok{color:var(--g)}
 .wl-status.err{color:#f4645f}
+/* ─── WAITLIST BANNER ─── */
+.wl-banner{display:flex;align-items:center;gap:14px;background:#181c25;border-left:3px solid #3dd68c;padding:12px 16px;border-radius:8px;animation:fadeUp .3s ease}
+.wl-banner-text{font-size:13px;color:#c7d2e6;flex:1}
+.wl-banner-cta{padding:6px 14px;border-radius:6px;border:1px solid #3dd68c;background:rgba(61,214,140,.1);color:#3dd68c;font-size:12px;font-weight:600;font-family:var(--mono);cursor:pointer;white-space:nowrap;flex-shrink:0}
+.wl-banner-cta:hover{background:rgba(61,214,140,.18)}
+.wl-banner-x{background:none;border:none;color:#8b92a5;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;flex-shrink:0}
+.wl-banner-x:hover{color:#eef0f6}
 
 /* ─── LAYOUT ─── */
 .shell{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 52px)}
@@ -601,6 +608,13 @@ tbody td:nth-child(2){text-align:left}
           </div>
         </div>
 
+        <!-- WAITLIST BANNER -->
+        <div id="wl-banner" class="wl-banner" style="display:none">
+          <span class="wl-banner-text">PortfolioAI is launching soon — join the waitlist for priority access.</span>
+          <button class="wl-banner-cta" onclick="openWaitlist()">Get Early Access →</button>
+          <button class="wl-banner-x" onclick="dismissBanner()" aria-label="Dismiss">×</button>
+        </div>
+
         <!-- CLAUDE AI PANEL -->
         <div class="card fade d6" id="claude-card" style="display:none">
           <div class="card-head">
@@ -808,6 +822,8 @@ function render(data, holdings) {
   // Reset Claude panel from any previous run
   document.getElementById('claude-card').style.display = 'none';
   document.getElementById('claude-out').textContent = '';
+  // Show the launch banner after a successful optimization (unless dismissed/joined)
+  maybeShowBanner();
   const { risk_score, risk_level, rebalancing, optimization, current_metrics, total_value, tickers:tk } = data;
   const cm = current_metrics, opt = optimization.max_sharpe_metrics;
 
@@ -951,6 +967,18 @@ function closeWaitlist() {
   document.getElementById('wl-overlay').style.display = 'none';
 }
 
+// Show the launch banner after a successful optimization, unless dismissed or joined
+function maybeShowBanner() {
+  if (sessionStorage.getItem('banner_dismissed') === 'true') return;
+  if (sessionStorage.getItem('waitlist_joined') === 'true') return;
+  document.getElementById('wl-banner').style.display = 'flex';
+}
+
+function dismissBanner() {
+  sessionStorage.setItem('banner_dismissed', 'true');
+  document.getElementById('wl-banner').style.display = 'none';
+}
+
 async function submitWaitlist(ev) {
   ev.preventDefault();
   const btn    = document.getElementById('wl-submit');
@@ -975,6 +1003,8 @@ async function submitWaitlist(ev) {
       status.className = 'wl-status ok';
       status.textContent = "You're on the list! We'll be in touch.";
       track('waitlist_signup', { user_type: type });
+      sessionStorage.setItem('waitlist_joined', 'true');
+      document.getElementById('wl-banner').style.display = 'none';
       document.getElementById('wl-form').reset();
       setTimeout(closeWaitlist, 2000);
     } else if (json.error === 'already registered') {
