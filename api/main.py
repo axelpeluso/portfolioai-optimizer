@@ -3,7 +3,7 @@
 # v2 - explain endpoint active
 # ============================================================
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from typing import Optional
 import os
 import re
 import json
+import logging
 import uvicorn
 
 from optimizer import run_full_analysis
@@ -63,6 +64,20 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages       : list[ChatMessage]
     portfolio_data : Optional[dict] = None
+
+
+class WaitlistRequest(BaseModel):
+    email     : str
+    name      : str
+    user_type : str
+    source    : Optional[str] = "linkedin"
+
+
+class TrackRequest(BaseModel):
+    event_type : str
+    session_id : Optional[str] = None
+    tickers    : Optional[list[str]] = None
+    metadata   : Optional[dict] = None
 
 
 EXPLAIN_PROMPT = (
@@ -127,6 +142,33 @@ def _stream_sse(client, **kwargs):
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── SUPABASE HELPER ───────────────────────────────────────────
+_supabase = None
+
+
+def _supabase_client():
+    """Return a cached Supabase client or raise a clear HTTP error."""
+    global _supabase
+    if _supabase is not None:
+        return _supabase
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    if not url or not key:
+        raise HTTPException(
+            status_code=500,
+            detail="Supabase not configured (set SUPABASE_URL and SUPABASE_KEY)."
+        )
+    try:
+        from supabase import create_client
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="supabase not installed. Add supabase to requirements.txt."
+        )
+    _supabase = create_client(url, key)
+    return _supabase
 
 
 CONTROL_MARKERS = ("[REOPTIMIZE]", "[ACTION]")
@@ -272,6 +314,85 @@ def chat(request: ChatRequest):
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── WAITLIST + ANALYTICS ──────────────────────────────────────
+def _is_duplicate_error(e: Exception) -> bool:
+    """Detect a Postgres unique-violation (duplicate email)."""
+    code = getattr(e, "code", None)
+    if code == "23505":
+        return True
+    msg = str(e).lower()
+    return "duplicate" in msg or "23505" in msg or "already exists" in msg
+
+
+@app.post("/waitlist")
+def waitlist(request: WaitlistRequest):
+    """Add an email to the waitlist. Returns {error:'already registered'} on duplicate."""
+    client = _supabase_client()
+    row = {
+        "email"    : request.email.strip().lower(),
+        "name"     : request.name.strip(),
+        "user_type": request.user_type.strip(),
+        "source"   : (request.source or "linkedin").strip(),
+    }
+    if not row["email"] or not row["name"] or not row["user_type"]:
+        raise HTTPException(status_code=400, detail="email, name and user_type are required.")
+    try:
+        client.table("waitlist").insert(row).execute()
+    except Exception as e:
+        if _is_duplicate_error(e):
+            return {"error": "already registered"}
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+@app.post("/track")
+def track(request: TrackRequest):
+    """Fire-and-forget analytics event. Always returns 200, never blocks the caller."""
+    try:
+        client = _supabase_client()
+        client.table("events").insert({
+            "event_type": request.event_type,
+            "session_id": request.session_id,
+            "tickers"   : request.tickers,
+            "metadata"  : request.metadata,
+        }).execute()
+    except Exception as e:
+        logging.warning(f"track event failed (ignored): {e}")
+    return {"success": True}
+
+
+@app.get("/analytics")
+def analytics(x_admin_key: Optional[str] = Header(None)):
+    """Admin dashboard data. Requires the X-Admin-Key header to match ADMIN_KEY."""
+    admin_key = os.environ.get("ADMIN_KEY")
+    if not admin_key or x_admin_key != admin_key:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    client = _supabase_client()
+
+    wl_count = client.table("waitlist").select("id", count="exact").execute().count or 0
+
+    events = client.table("events").select("event_type").execute().data or []
+    events_by_type = {}
+    for e in events:
+        t = e.get("event_type", "unknown")
+        events_by_type[t] = events_by_type.get(t, 0) + 1
+
+    signups = client.table("waitlist").select("created_at").execute().data or []
+    signups_per_day = {}
+    for s in signups:
+        day = str(s.get("created_at", ""))[:10]
+        if day:
+            signups_per_day[day] = signups_per_day.get(day, 0) + 1
+
+    return {
+        "waitlist_count" : wl_count,
+        "events_by_type" : events_by_type,
+        "signups_per_day": dict(sorted(signups_per_day.items())),
+        "total_events"   : len(events),
+    }
 
 
 # ── RUN ───────────────────────────────────────────────────────
