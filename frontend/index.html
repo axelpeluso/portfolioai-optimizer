@@ -59,6 +59,25 @@ nav{
 .pill{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:500;letter-spacing:.5px;cursor:pointer;transition:all .2s}
 .pill-outline{background:transparent;border:1px solid var(--line2);color:var(--t2)}
 .pill-outline:hover{border-color:var(--g);color:var(--g)}
+.pill-solid{background:var(--g);border:1px solid var(--g);color:#0d0f14;font-weight:600}
+.pill-solid:hover{background:#34c07d;border-color:#34c07d}
+/* ─── WAITLIST MODAL ─── */
+.wl-overlay{position:fixed;inset:0;background:rgba(6,8,12,.72);backdrop-filter:blur(3px);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .2s ease}
+.wl-modal{position:relative;width:min(400px,100%);background:#12151c;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px 26px 24px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.wl-close{position:absolute;top:14px;right:14px;background:none;border:none;color:#8b92a5;font-size:15px;cursor:pointer;line-height:1}
+.wl-close:hover{color:#eef0f6}
+.wl-title{font-family:var(--serif);font-size:20px;font-weight:500;color:#eef0f6}
+.wl-sub{font-size:13px;color:#8b92a5;margin:4px 0 18px}
+.wl-label{display:block;font-size:11px;font-family:var(--mono);color:#8b92a5;margin:12px 0 5px;letter-spacing:.4px}
+.wl-input{width:100%;background:#0d1017;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 12px;color:#eef0f6;font-size:14px;font-family:inherit;outline:none}
+.wl-input:focus{border-color:var(--g)}
+select.wl-input{cursor:pointer}
+.wl-submit{width:100%;margin-top:18px;padding:11px;border-radius:9px;border:1px solid var(--g);background:var(--g);color:#0d0f14;font-size:14px;font-weight:600;font-family:var(--mono);cursor:pointer;transition:background .15s}
+.wl-submit:hover{background:#34c07d}
+.wl-submit:disabled{opacity:.6;cursor:default}
+.wl-status{margin-top:14px;font-size:13px;text-align:center;min-height:18px}
+.wl-status.ok{color:var(--g)}
+.wl-status.err{color:#f4645f}
 
 /* ─── LAYOUT ─── */
 .shell{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 52px)}
@@ -383,7 +402,9 @@ tbody td:nth-child(2){text-align:left}
   <div class="meta-tag" style="margin-left:6px">K-Means · RF · MLP · MPT · Claude AI</div>
   <div class="nav-right">
     <div class="pill pill-outline">Research Mode</div>
+    <button class="pill pill-solid" onclick="openWaitlist()">Join Waitlist</button>
   </div>
+  
 </nav>
 
 <!-- SHELL -->
@@ -628,6 +649,31 @@ tbody td:nth-child(2){text-align:left}
   </div>
 </div>
 
+<!-- WAITLIST MODAL -->
+<div id="wl-overlay" class="wl-overlay" style="display:none" onclick="if(event.target===this)closeWaitlist()">
+  <div class="wl-modal">
+    <button class="wl-close" onclick="closeWaitlist()" aria-label="Close">✕</button>
+    <div class="wl-title">Join the Waitlist</div>
+    <div class="wl-sub">Get early access to PortfolioAI.</div>
+    <form id="wl-form" onsubmit="submitWaitlist(event)">
+      <label class="wl-label" for="wl-name">Name</label>
+      <input id="wl-name" class="wl-input" type="text" required autocomplete="name" placeholder="Jane Doe">
+      <label class="wl-label" for="wl-email">Email</label>
+      <input id="wl-email" class="wl-input" type="email" required autocomplete="email" placeholder="jane@example.com">
+      <label class="wl-label" for="wl-type">What best describes you?</label>
+      <select id="wl-type" class="wl-input" required>
+        <option value="Individual investor">Individual investor</option>
+        <option value="Financial advisor">Financial advisor</option>
+        <option value="Student">Student</option>
+        <option value="Developer">Developer</option>
+        <option value="Other">Other</option>
+      </select>
+      <button id="wl-submit" class="wl-submit" type="submit">Get Early Access →</button>
+      <div id="wl-status" class="wl-status"></div>
+    </form>
+  </div>
+</div>
+
 <script>
 const API = 'https://atlantis-production-58a3.up.railway.app';
 const DEF = {
@@ -640,6 +686,17 @@ let tickers = [...DEF.tickers], cB = null, cA = null;
 let si = 0, stimer = null;
 let _lastData = null;
 let chatHistory = [];   // {role:'user'|'assistant', content:string}
+const SESSION_ID = 's_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+// Fire-and-forget analytics — never blocks the UI, swallows all errors
+function track(event_type, metadata = null, tickers = null) {
+  try {
+    fetch(`${API}/track`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type, session_id: SESSION_ID, tickers, metadata })
+    }).catch(() => {});
+  } catch (_) {}
+}
 const STEPS = [
   'Downloading market data 2021–2026…',
   'Running K-Means clustering…',
@@ -730,6 +787,11 @@ async function go() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.detail || 'API error');
     render(json.data, holdings);
+    track('optimization_run', {
+      risk_score: json.data.risk_score,
+      risk_level: json.data.risk_level,
+      n_tickers : (json.data.tickers || tickers).length
+    }, json.data.tickers || tickers);
   } catch(e) {
     showErr(e.message + ' — ensure the API is running on port 8080.');
     document.getElementById('empty').style.display = 'flex';
@@ -829,6 +891,7 @@ function render(data, holdings) {
 // ── CLAUDE EXPLAIN ──
 async function explainWithClaude() {
   if (!_lastData) return;
+  track('explain_clicked', { tickers: _lastData.tickers });
   const btn  = document.getElementById('claude-btn');
   const card = document.getElementById('claude-card');
   const out  = document.getElementById('claude-out');
@@ -873,6 +936,59 @@ async function explainWithClaude() {
   } finally {
     btn.disabled  = false;
     btn.innerHTML = btnHtml;
+  }
+}
+
+// ── WAITLIST ──
+function openWaitlist() {
+  document.getElementById('wl-status').textContent = '';
+  document.getElementById('wl-status').className = 'wl-status';
+  document.getElementById('wl-overlay').style.display = 'flex';
+  document.getElementById('wl-name').focus();
+}
+
+function closeWaitlist() {
+  document.getElementById('wl-overlay').style.display = 'none';
+}
+
+async function submitWaitlist(ev) {
+  ev.preventDefault();
+  const btn    = document.getElementById('wl-submit');
+  const status = document.getElementById('wl-status');
+  const name   = document.getElementById('wl-name').value.trim();
+  const email  = document.getElementById('wl-email').value.trim();
+  const type   = document.getElementById('wl-type').value;
+  if (!name || !email) return;
+
+  btn.disabled = true;
+  status.className = 'wl-status';
+  status.textContent = 'Submitting…';
+
+  try {
+    const res  = await fetch(`${API}/waitlist`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, user_type: type, source: 'linkedin' })
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (json.success) {
+      status.className = 'wl-status ok';
+      status.textContent = "You're on the list! We'll be in touch.";
+      track('waitlist_signup', { user_type: type });
+      document.getElementById('wl-form').reset();
+      setTimeout(closeWaitlist, 2000);
+    } else if (json.error === 'already registered') {
+      status.className = 'wl-status ok';
+      status.textContent = "You're already on the list!";
+    } else {
+      status.className = 'wl-status err';
+      status.textContent = 'Something went wrong, try again.';
+    }
+  } catch (e) {
+    status.className = 'wl-status err';
+    status.textContent = 'Something went wrong, try again.';
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -924,6 +1040,7 @@ async function sendChat() {
 
   addBubble('chat-user', text);
   chatHistory.push({ role:'user', content:text });
+  track('chat_message', { chars: text.length });
   input.value = '';
   input.disabled = true;
   send.disabled  = true;
