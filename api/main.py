@@ -12,9 +12,8 @@ import os
 import re
 import json
 import logging
-import smtplib
+import requests
 import uvicorn
-from email.mime.text import MIMEText
 
 from optimizer import run_full_analysis
 
@@ -447,13 +446,17 @@ def analytics(x_admin_key: Optional[str] = Header(None)):
 
 # ── SUPPORT / CONTACT ─────────────────────────────────────────
 def send_support_email(name, email, message, source):
-    """Send a support notification via Zoho SMTP. No-op if creds are unset.
-    Self-contained (swallows its own errors) so it is safe as a background task."""
-    smtp_from = os.getenv("SUPPORT_EMAIL_FROM")
-    smtp_to   = os.getenv("SUPPORT_EMAIL_TO")
-    app_pass  = os.getenv("ZOHO_APP_PASSWORD")
-    if not all([smtp_from, smtp_to, app_pass]):
+    """Send a support notification via the Resend HTTP API (Railway blocks outbound
+    SMTP, so raw smtplib hangs). No-op if RESEND_API_KEY is unset. Self-contained
+    (swallows its own errors) so it is safe to run as a background task."""
+    api_key = os.getenv("RESEND_API_KEY")
+    to_addr = os.getenv("SUPPORT_EMAIL_TO")
+    if not api_key or not to_addr:
         return
+
+    # Resend requires a verified domain to send from; onboarding@resend.dev works
+    # out of the box (to the account owner) for testing until the domain is verified.
+    sender = os.getenv("SUPPORT_EMAIL_FROM") or "onboarding@resend.dev"
 
     body = f"""New support request from PortfolioAI
 
@@ -467,17 +470,21 @@ Message:
 ---
 Reply directly to {email} to follow up.
 """
-    msg = MIMEText(body)
-    msg['Subject']  = f"[PortfolioAI Support] {message[:50]}..."
-    msg['From']     = smtp_from
-    msg['To']       = smtp_to
-    msg['Reply-To'] = email or smtp_from
-
+    payload = {
+        "from"    : f"PortfolioAI <{sender}>",
+        "to"      : [to_addr],
+        "subject" : f"[PortfolioAI Support] {message[:50]}...",
+        "text"    : body,
+        "reply_to": email or sender,
+    }
     try:
-        # timeout so a blocked/slow SMTP port fails fast instead of hanging
-        with smtplib.SMTP_SSL('smtp.zoho.com', 465, timeout=15) as server:
-            server.login(smtp_from, app_pass)
-            server.sendmail(smtp_from, smtp_to, msg.as_string())
+        r = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload, timeout=15,
+        )
+        if r.status_code >= 400:
+            logging.warning(f"Resend email failed {r.status_code}: {r.text[:300]}")
     except Exception as e:
         logging.warning(f"Support email failed: {e}")
 
