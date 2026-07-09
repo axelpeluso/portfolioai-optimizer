@@ -1317,8 +1317,7 @@ function linkify(el, text) {
       const a = document.createElement('a');
       a.href = url;
       a.textContent = label;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
+      if (!/^mailto:/i.test(url)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }  // mailto must open in place
       a.className = 'chat-link';
       el.appendChild(a);
     } else {
