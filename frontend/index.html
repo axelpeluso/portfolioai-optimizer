@@ -81,7 +81,9 @@ nav{
 .compare-table th:first-child,.compare-table td:first-child{text-align:left;font-family:var(--mono);color:var(--t2)}
 .compare-table thead th{font-size:10px;font-family:var(--mono);letter-spacing:.5px;text-transform:uppercase;color:var(--t3)}
 .compare-table .metric-row td{color:var(--t1);font-family:var(--mono)}
-.compare-table .metric-row td.best{color:var(--g);font-weight:600}
+.cd{font-size:10px}
+.cd.up{color:var(--g)}
+.cd.down{color:var(--red)}
 .compare-table .sep td{border-bottom:1px solid var(--line2);height:0;padding:0}
 .compare-w{font-family:var(--mono);color:var(--t2)}
 .compare-w.zero{color:var(--t3);opacity:.5}
@@ -978,32 +980,51 @@ function renderCompare() {
   const panel = document.getElementById('compare-panel');
   if (snapshots.length < 2) { panel.style.display = 'none'; compareOn = false; return; }
   const cols = snapshots;
+  const base = cols[0];   // deltas are measured against the earliest scenario
   const allT = [...new Set(cols.flatMap(s => s.data.tickers || []))].sort();
   const msm = s => (s.data.optimization && s.data.optimization.max_sharpe_metrics) || {};
   const ow  = s => (s.data.optimization && s.data.optimization.optimal_weights) || {};
-  const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
   const num = v => v == null ? '—' : v.toFixed(2);
-  const max = a => a.length ? Math.max(...a) : null;
-  const min = a => a.length ? Math.min(...a) : null;
+  const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
 
-  function mrow(label, get, fmt, bestFn) {
+  // green = up, red = down (directional vs the first column)
+  function dspan(delta, fmt) {
+    if (delta == null || Math.abs(delta) < 1e-9) return '';
+    const cls = delta > 0 ? 'up' : 'down';
+    const sign = delta > 0 ? '+' : '−';
+    return ` <span class="cd ${cls}">(${sign}${fmt(Math.abs(delta))})</span>`;
+  }
+
+  function mrow(label, get, fmt) {
     const vals = cols.map(get);
-    const best = bestFn ? bestFn(vals.filter(v => v != null)) : null;
-    const cells = vals.map(v => `<td class="${best != null && v === best ? 'best' : ''}">${fmt(v)}</td>`).join('');
+    const b = vals[0];
+    const cells = vals.map((v, i) =>
+      `<td>${fmt(v)}${i === 0 ? '' : dspan((v != null && b != null) ? v - b : null, fmt)}</td>`
+    ).join('');
     return `<tr class="metric-row"><td>${label}</td>${cells}</tr>`;
   }
 
   const head = '<tr><th>Scenario</th>' + cols.map(s => `<th>${s.label}</th>`).join('') + '</tr>';
   let rows = '';
-  rows += mrow('Sharpe',     s => msm(s).sharpe,     num, max);
-  rows += mrow('Return',     s => msm(s).return,     pct, max);
-  rows += mrow('Volatility', s => msm(s).volatility, pct, min);
+  rows += mrow('Sharpe',     s => msm(s).sharpe,     num);
+  rows += mrow('Return',     s => msm(s).return,     pct);
+  rows += mrow('Volatility', s => msm(s).volatility, pct);
   rows += `<tr class="metric-row"><td>Risk</td>${cols.map(s => `<td>${s.data.risk_level || '—'}</td>`).join('')}</tr>`;
   rows += `<tr class="sep"><td colspan="${cols.length + 1}"></td></tr>`;
+
   allT.forEach(t => {
-    rows += `<tr><td>${t}</td>${cols.map(s => {
+    const bw = ow(base)[t];
+    rows += `<tr><td>${t}</td>${cols.map((s, i) => {
       const w = ow(s)[t];
-      return `<td class="compare-w${!w ? ' zero' : ''}">${w != null ? (w * 100).toFixed(1) + '%' : '—'}</td>`;
+      const disp = w != null ? (w * 100).toFixed(1) + '%' : '—';
+      if (i === 0) return `<td class="compare-w${!w ? ' zero' : ''}">${disp}</td>`;
+      let extra = '';
+      if (w != null && (bw == null || bw === 0)) extra = ' <span class="cd up">(new)</span>';
+      else if (w != null && bw != null) {
+        const d = (w - bw) * 100;
+        if (Math.abs(d) >= 0.05) extra = ` <span class="cd ${d > 0 ? 'up' : 'down'}">(${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}%)</span>`;
+      }
+      return `<td class="compare-w${!w ? ' zero' : ''}">${disp}${extra}</td>`;
     }).join('')}</tr>`;
   });
 
