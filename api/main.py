@@ -98,6 +98,12 @@ CHAT_SYSTEM_PROMPT = (
     "Reference actual numbers from their portfolio when available.\n\n"
     "Never use bullet points. Always sound like a confident quant, not a "
     "disclaimer-heavy advisor.\n\n"
+    "If the user reports a bug, has a question about the product, or wants to "
+    "contact support: acknowledge it warmly, ask for their name and email, then "
+    "give them this direct mailto link as a fallback: "
+    "mailto:hi@axelpeluso.com?subject=PortfolioAI Support&body=Name:%0AEmail:%0AIssue: "
+    "— display it as a clickable link with the text 'or email us directly'. "
+    "Be conversational and brief.\n\n"
     "PORTFOLIO ACTIONS: If the user wants to add or remove tickers, after your "
     "analysis emit a single machine-readable line exactly like:\n"
     '[ACTION]{"add":["TSLA"],"remove":[],"risk":null}\n'
