@@ -987,29 +987,34 @@ function renderCompare() {
   const num = v => v == null ? '—' : v.toFixed(2);
   const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
 
-  // green = up, red = down (directional vs the first column)
-  function dspan(delta, fmt) {
+  // color by whether the change is favorable (green good / red bad); sign is shown separately
+  function dspan(delta, fmt, higherBetter = true) {
     if (delta == null || Math.abs(delta) < 1e-9) return '';
-    const cls = delta > 0 ? 'up' : 'down';
+    const good = higherBetter ? delta > 0 : delta < 0;
     const sign = delta > 0 ? '+' : '−';
-    return ` <span class="cd ${cls}">(${sign}${fmt(Math.abs(delta))})</span>`;
+    return ` <span class="cd ${good ? 'up' : 'down'}">(${sign}${fmt(Math.abs(delta))})</span>`;
   }
 
-  function mrow(label, get, fmt) {
+  function mrow(label, get, fmt, higherBetter = true) {
     const vals = cols.map(get);
     const b = vals[0];
     const cells = vals.map((v, i) =>
-      `<td>${fmt(v)}${i === 0 ? '' : dspan((v != null && b != null) ? v - b : null, fmt)}</td>`
+      `<td>${fmt(v)}${i === 0 ? '' : dspan((v != null && b != null) ? v - b : null, fmt, higherBetter)}</td>`
     ).join('');
     return `<tr class="metric-row"><td>${label}</td>${cells}</tr>`;
   }
 
   const head = '<tr><th>Scenario</th>' + cols.map(s => `<th>${s.label}</th>`).join('') + '</tr>';
   let rows = '';
-  rows += mrow('Sharpe',     s => msm(s).sharpe,     num);
-  rows += mrow('Return',     s => msm(s).return,     pct);
-  rows += mrow('Volatility', s => msm(s).volatility, pct);
-  rows += `<tr class="metric-row"><td>Risk</td>${cols.map(s => `<td>${s.data.risk_level || '—'}</td>`).join('')}</tr>`;
+  rows += mrow('Sharpe',     s => msm(s).sharpe,     num, true);   // higher = better
+  rows += mrow('Return',     s => msm(s).return,     pct, true);   // higher = better
+  rows += mrow('Volatility', s => msm(s).volatility, pct, false);  // lower = better
+  // Risk row: show level + favorable-colored risk_score delta (lower = better)
+  const rBase = cols[0].data.risk_score;
+  rows += `<tr class="metric-row"><td>Risk</td>${cols.map((s, i) => {
+    const d = (i === 0 || s.data.risk_score == null || rBase == null) ? null : s.data.risk_score - rBase;
+    return `<td>${s.data.risk_level || '—'}${dspan(d, v => v.toFixed(2), false)}</td>`;
+  }).join('')}</tr>`;
   rows += `<tr class="sep"><td colspan="${cols.length + 1}"></td></tr>`;
 
   allT.forEach(t => {
