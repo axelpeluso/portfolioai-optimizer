@@ -269,8 +269,8 @@ Released under the **MIT License**. See [`LICENSE`](LICENSE).
 
 ---
 
-## 🎓 Academic disclaimer
+## 🎓 Disclaimer
 
-This project was developed for an **academic course** (MAI500 — Atlantis University, Winter 2026 term). It is intended for **educational and research purposes only** and **does not constitute financial advice**. Predictions, risk scores, and rebalancing recommendations are produced by statistical models trained on historical data and may be wrong. Do **not** use this software to make real investment decisions without consulting a qualified financial professional.
+This project is intended for **educational and research purposes only** and **does not constitute financial advice**. Predictions, risk scores, and rebalancing recommendations are produced by statistical models trained on historical data and may be wrong. Do **not** use this software to make real investment decisions without consulting a qualified financial professional.
 
 Questions or issues? Contact **hi@axelpeluso.com**.
