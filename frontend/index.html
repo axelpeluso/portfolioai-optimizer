@@ -61,6 +61,9 @@ nav{
 .pill-outline:hover{border-color:var(--g);color:var(--g)}
 .pill-solid{background:var(--g);border:1px solid var(--g);color:#0d0f14;font-weight:600}
 .pill-solid:hover{background:#34c07d;border-color:#34c07d}
+.pill-beta{background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.35);color:#f5a623;cursor:default;display:inline-flex;align-items:center;gap:6px}
+.beta-dot{width:6px;height:6px;border-radius:50%;background:#f5a623;box-shadow:0 0 6px rgba(245,166,35,.8)}
+.results-disclaimer{text-align:center;font-size:11px;color:var(--t3);padding:4px 0 2px;letter-spacing:.2px}
 /* ─── WAITLIST MODAL ─── */
 .wl-overlay{position:fixed;inset:0;background:rgba(6,8,12,.72);backdrop-filter:blur(3px);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .2s ease}
 .wl-modal{position:relative;width:min(400px,100%);background:#12151c;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px 26px 24px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
@@ -417,7 +420,7 @@ tbody td:nth-child(2){text-align:left}
   <div class="meta-tag" style="margin-left:4px">Nov 2021 – July 2026</div>
   <div class="meta-tag" style="margin-left:6px">K-Means · RF · MLP · MPT · Claude AI</div>
   <div class="nav-right">
-    <div class="pill pill-outline">Research Mode</div>
+    <div class="pill pill-beta"><span class="beta-dot"></span>Beta</div>
     <button class="pill pill-solid" onclick="openWaitlist()">Join Waitlist</button>
   </div>
   
@@ -639,6 +642,10 @@ tbody td:nth-child(2){text-align:left}
             <div class="card-meta" id="claude-meta">Powered by claude-haiku-4-5</div>
           </div>
           <div id="claude-out" style="font-size:13px;line-height:1.75;color:#8b92a5;padding:4px 0;white-space:pre-wrap;min-height:60px"></div>
+        </div>
+
+        <div class="results-disclaimer">
+          For research and educational purposes only — not investment advice.
         </div>
 
       </div><!-- /results -->
