@@ -3,7 +3,7 @@
 # v2 - explain endpoint active
 # ============================================================
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -447,7 +447,8 @@ def analytics(x_admin_key: Optional[str] = Header(None)):
 
 # ── SUPPORT / CONTACT ─────────────────────────────────────────
 def send_support_email(name, email, message, source):
-    """Send a support notification via Zoho SMTP. No-op if creds are unset."""
+    """Send a support notification via Zoho SMTP. No-op if creds are unset.
+    Self-contained (swallows its own errors) so it is safe as a background task."""
     smtp_from = os.getenv("SUPPORT_EMAIL_FROM")
     smtp_to   = os.getenv("SUPPORT_EMAIL_TO")
     app_pass  = os.getenv("ZOHO_APP_PASSWORD")
@@ -472,14 +473,20 @@ Reply directly to {email} to follow up.
     msg['To']       = smtp_to
     msg['Reply-To'] = email or smtp_from
 
-    with smtplib.SMTP_SSL('smtp.zoho.com', 465) as server:
-        server.login(smtp_from, app_pass)
-        server.sendmail(smtp_from, smtp_to, msg.as_string())
+    try:
+        # timeout so a blocked/slow SMTP port fails fast instead of hanging
+        with smtplib.SMTP_SSL('smtp.zoho.com', 465, timeout=15) as server:
+            server.login(smtp_from, app_pass)
+            server.sendmail(smtp_from, smtp_to, msg.as_string())
+    except Exception as e:
+        logging.warning(f"Support email failed: {e}")
 
 
 @app.post("/contact")
-def contact(request: ContactRequest):
-    """Log a support request to Supabase and notify the team by email. Best-effort."""
+def contact(request: ContactRequest, background_tasks: BackgroundTasks):
+    """Log a support request to Supabase and notify the team by email. Best-effort:
+    the Supabase row is the durable record; the email is sent in the background so a
+    slow or blocked SMTP port never delays (or hangs) the response."""
     try:
         client = _supabase_client()
         client.table("support").insert({
@@ -491,11 +498,9 @@ def contact(request: ContactRequest):
     except Exception as e:
         logging.warning(f"Supabase contact insert failed: {e}")
 
-    try:
-        send_support_email(request.name, request.email, request.message, request.source)
-    except Exception as e:
-        logging.warning(f"Support email failed: {e}")
-
+    background_tasks.add_task(
+        send_support_email, request.name, request.email, request.message, request.source
+    )
     return {"success": True}
 
 
