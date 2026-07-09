@@ -2,7 +2,8 @@
 
 > An end-to-end machine-learning pipeline that profiles each asset, predicts forward returns, scores market risk, and emits actionable BUY / SELL / HOLD instructions in dollars — with a **Claude AI** assistant that explains and re-optimizes your portfolio in plain English. Served through a FastAPI backend and a TradingView-style web UI.
 
-![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![CI](https://github.com/axelpeluso/portfolioai-optimizer/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.5-F7931E?logo=scikitlearn&logoColor=white)
 ![Claude](https://img.shields.io/badge/Claude-Haiku_4.5-D97757?logo=anthropic&logoColor=white)
@@ -78,9 +79,10 @@ Final Project/
 ├── api/
 │   ├── main.py                 ← FastAPI app + routes (optimize, explain, chat, waitlist, …)
 │   ├── optimizer.py            ← ML + MPT pipeline
+│   ├── test_api.py             ← pytest smoke tests for the core endpoints
 │   ├── prices.csv              ← bundled adjusted-close history (289 tickers)
 │   ├── tickers.json            ← symbol → company name map (for autocomplete)
-│   ├── requirements.txt        ← Python deps
+│   ├── requirements.txt        ← Python deps (deployment)
 │   ├── railway.json            ← Railway deploy config
 │   ├── Procfile / runtime.txt  ← process + Python version
 ├── frontend/
@@ -89,6 +91,8 @@ Final Project/
 │   └── portfolio_optimizer.ipynb   ← full ML walk-through
 ├── docs/
 │   └── dormant-support-flow.md ← parked in-app support (Supabase + email) design
+├── .github/workflows/ci.yml    ← GitHub Actions (pytest on push / PR)
+├── requirements-notebook.txt   ← notebook-only extras (matplotlib, yfinance)
 ├── vercel.json                 ← rewrites / → frontend/index.html
 ├── .env.example                ← required env var names (no secrets)
 ├── .gitignore
@@ -137,7 +141,9 @@ The core `/optimize` pipeline needs **no** secrets — the AI, waitlist, and ana
 ## ▶️ How to run
 
 ### 1. The notebook (full ML walk-through)
+The notebook needs a couple of extra libraries (plotting + live data) beyond the API:
 ```bash
+pip install -r requirements-notebook.txt
 jupyter notebook notebook/portfolio_optimizer.ipynb
 ```
 
@@ -167,7 +173,6 @@ Open `frontend/index.html` in your browser. By default it calls the **deployed R
 | `POST` | `/waitlist`  | Add an email to the Supabase waitlist |
 | `POST` | `/track`     | Fire-and-forget analytics event (always 200) |
 | `GET`  | `/analytics` | Admin dashboard data (requires `X-Admin-Key`) |
-| `POST` | `/contact`   | Log a support request (dormant; see docs) |
 
 ### `POST /optimize` — request
 ```json

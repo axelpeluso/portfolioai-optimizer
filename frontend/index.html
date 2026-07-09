@@ -1374,7 +1374,7 @@ async function sendChat() {
 
   const bubble = addBubble('chat-ai', '');
   bubble.innerHTML = '<span class="claude-spin"></span>';
-  let visible = '', reoptimize = false, action = null, support = null, gotText = false;
+  let visible = '', reoptimize = false, action = null, gotText = false;
 
   try {
     const res = await fetch(`${API}/chat`, {
@@ -1401,7 +1401,7 @@ async function sendChat() {
           const obj = JSON.parse(payload);
           if (obj.error) { visible += '\n[error] ' + obj.error; }
           else if (obj.text) { visible += obj.text; gotText = true; }
-          if (obj.done) { reoptimize = !!obj.reoptimize; action = obj.action || null; support = obj.support || null; }
+          if (obj.done) { reoptimize = !!obj.reoptimize; action = obj.action || null; }
           if (gotText) bubble.textContent = visible.trim();
           document.getElementById('chat-log').scrollTop = 1e9;
         } catch(_) { /* partial JSON */ }
@@ -1411,19 +1411,6 @@ async function sendChat() {
     const finalText = visible.trim() || '(no response)';
     linkify(bubble, finalText);   // render markdown/raw links as clickable <a>, rest as plain text
     chatHistory.push({ role:'assistant', content: finalText });
-
-    // Support request captured — log it and notify the team
-    if (support && (support.email || support.name)) {
-      try {
-        await fetch(`${API}/contact`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: support.name || '', email: support.email || '', message: support.issue || finalText, source: 'chat' })
-        });
-        addBubble('chat-sys', '✓ Message sent to the team.');
-      } catch (_) {
-        addBubble('chat-sys', '⚠ Could not send just now — please try again.');
-      }
-    }
 
     // Apply ticker actions, then re-optimize if requested
     const changed = applyChatAction(action);

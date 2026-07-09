@@ -1,0 +1,7 @@
+# Dependencies for running notebook/portfolio_optimizer.ipynb.
+# Pulls in the core API libs and adds the notebook-only extras (plotting +
+# live data download). The deployed API does NOT need these.
+-r api/requirements.txt
+matplotlib==3.9.2
+yfinance==0.2.59
+jupyter

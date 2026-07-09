@@ -1,9 +1,11 @@
 # ============================================================
 # main.py — FastAPI Application
-# v2 - explain endpoint active
+#
+# REST + SSE API for the PortfolioAI rebalancing engine:
+#   /optimize, /explain, /chat, /tickers, /waitlist, /track, /analytics
 # ============================================================
 
-from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -12,7 +14,6 @@ import os
 import re
 import json
 import logging
-import requests
 import uvicorn
 
 from optimizer import run_full_analysis
@@ -37,8 +38,8 @@ class OptimizeRequest(BaseModel):
     tickers          : list[str]
     current_holdings : Optional[dict[str, float]] = {}
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "tickers": ["AAPL","MSFT","GOOGL","JPM","BND","GLD","AMZN"],
                 "current_holdings": {
@@ -52,6 +53,7 @@ class OptimizeRequest(BaseModel):
                 }
             }
         }
+    }
 
 class ExplainRequest(BaseModel):
     portfolio_data: dict
@@ -79,13 +81,6 @@ class TrackRequest(BaseModel):
     session_id : Optional[str] = None
     tickers    : Optional[list[str]] = None
     metadata   : Optional[dict] = None
-
-
-class ContactRequest(BaseModel):
-    name    : str = ""
-    email   : str = ""
-    message : str
-    source  : str = "chat"
 
 
 EXPLAIN_PROMPT = (
@@ -182,7 +177,7 @@ def _supabase_client():
     return _supabase
 
 
-CONTROL_MARKERS = ("[REOPTIMIZE]", "[ACTION]", "[SUPPORT_READY")
+CONTROL_MARKERS = ("[REOPTIMIZE]", "[ACTION]")
 
 
 def _visible_cut(buf: str) -> int:
@@ -212,19 +207,6 @@ def _parse_actions(text: str) -> tuple:
         except (json.JSONDecodeError, ValueError):
             action = None
     return reoptimize, action
-
-
-def _parse_support(text: str):
-    """Extract {name, email, issue} from a [SUPPORT_READY: name | email | issue] tag."""
-    m = re.search(r"\[SUPPORT_READY:([^\]]*)\]", text, re.DOTALL)
-    if not m:
-        return None
-    parts = [p.strip() for p in m.group(1).split("|")]
-    return {
-        "name" : parts[0] if len(parts) > 0 else "",
-        "email": parts[1] if len(parts) > 1 else "",
-        "issue": parts[2] if len(parts) > 2 else "",
-    }
 
 
 # ── ROUTES ────────────────────────────────────────────────────
@@ -347,12 +329,9 @@ def chat(request: ChatRequest):
                         sent = cut
 
             reoptimize, action = _parse_actions(full)
-            support = _parse_support(full)
             meta = {"done": True, "reoptimize": reoptimize}
             if action is not None:
                 meta["action"] = action
-            if support is not None:
-                meta["support"] = support
             yield f"data: {json.dumps(meta)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
@@ -438,73 +417,6 @@ def analytics(x_admin_key: Optional[str] = Header(None)):
         "signups_per_day": dict(sorted(signups_per_day.items())),
         "total_events"   : len(events),
     }
-
-
-# ── SUPPORT / CONTACT ─────────────────────────────────────────
-def send_support_email(name, email, message, source):
-    """Send a support notification via the Resend HTTP API (Railway blocks outbound
-    SMTP, so raw smtplib hangs). No-op if RESEND_API_KEY is unset. Self-contained
-    (swallows its own errors) so it is safe to run as a background task."""
-    api_key = os.getenv("RESEND_API_KEY")
-    to_addr = os.getenv("SUPPORT_EMAIL_TO")
-    if not api_key or not to_addr:
-        return
-
-    # Resend requires a verified domain to send from; onboarding@resend.dev works
-    # out of the box (to the account owner) for testing until the domain is verified.
-    sender = os.getenv("SUPPORT_EMAIL_FROM") or "onboarding@resend.dev"
-
-    body = f"""New support request from PortfolioAI
-
-Name:    {name or 'Not provided'}
-Email:   {email or 'Not provided'}
-Source:  {source}
-
-Message:
-{message}
-
----
-Reply directly to {email} to follow up.
-"""
-    payload = {
-        "from"    : f"PortfolioAI <{sender}>",
-        "to"      : [to_addr],
-        "subject" : f"[PortfolioAI Support] {message[:50]}...",
-        "text"    : body,
-        "reply_to": email or sender,
-    }
-    try:
-        r = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload, timeout=15,
-        )
-        if r.status_code >= 400:
-            logging.warning(f"Resend email failed {r.status_code}: {r.text[:300]}")
-    except Exception as e:
-        logging.warning(f"Support email failed: {e}")
-
-
-@app.post("/contact")
-def contact(request: ContactRequest, background_tasks: BackgroundTasks):
-    """Log a support request to Supabase and notify the team by email. Best-effort:
-    the Supabase row is the durable record; the email is sent in the background so a
-    slow or blocked SMTP port never delays (or hangs) the response."""
-    try:
-        client = _supabase_client()
-        client.table("support").insert({
-            "name"   : request.name,
-            "email"  : request.email,
-            "message": request.message,
-            "source" : request.source,
-        }).execute()
-    except Exception as e:
-        logging.warning(f"Supabase contact insert failed: {e}")
-
-    background_tasks.add_task(
-        send_support_email, request.name, request.email, request.message, request.source
-    )
-    return {"success": True}
 
 
 # ── RUN ───────────────────────────────────────────────────────
