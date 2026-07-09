@@ -1225,11 +1225,29 @@ async function sendChat() {
     // Apply ticker actions, then re-optimize if requested
     const changed = applyChatAction(action);
     if (reoptimize || changed) {
+      const added = (action && action.add || []).map(s => String(s).toUpperCase());
       let note = '↻ Re-optimizing…';
-      if (action && (action.add||[]).length) note = '＋ Added ' + action.add.join(', ') + ' · re-optimizing…';
+      if (added.length) note = '＋ Added ' + added.join(', ') + ' · re-optimizing…';
       else if (action && (action.remove||[]).length) note = '－ Removed ' + action.remove.join(', ') + ' · re-optimizing…';
       addBubble('chat-sys', note);
-      setTimeout(go, 500);
+
+      await go();   // wait for the fresh optimization so we can report the result
+
+      const opt = _lastData && _lastData.optimization;
+      if (opt) {
+        const ow = opt.optimal_weights || {};
+        const m  = opt.max_sharpe_metrics || {};
+        const shownAdds = added.filter(s => ow[s] != null);
+        let summary;
+        if (shownAdds.length) {
+          const parts = shownAdds.map(s => `${s} at ${(ow[s]*100).toFixed(1)}%`);
+          summary = `Done — the optimizer allocated ${parts.join(', ')} in the rebalanced portfolio. New Sharpe ${(m.sharpe||0).toFixed(2)}, risk ${_lastData.risk_score.toFixed(2)} (${_lastData.risk_level}).`;
+        } else {
+          summary = `Done — re-optimized. Sharpe ${(m.sharpe||0).toFixed(2)}, risk ${_lastData.risk_score.toFixed(2)} (${_lastData.risk_level}).`;
+        }
+        addBubble('chat-ai', summary);
+        chatHistory.push({ role: 'assistant', content: summary });
+      }
     }
   } catch(e) {
     bubble.textContent = 'Could not reach the assistant: ' + e.message;
