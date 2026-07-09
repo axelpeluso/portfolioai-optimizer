@@ -408,6 +408,7 @@ tbody td:nth-child(2){text-align:left}
 .chat-user{align-self:flex-end;background:rgba(91,156,246,.12);border:1px solid rgba(91,156,246,.28);color:#c7d2e6}
 .chat-ai{align-self:flex-start;background:rgba(61,214,140,.06);border:1px solid rgba(61,214,140,.16);color:#b8c0d0}
 .chat-sys{align-self:center;font-family:var(--mono);font-size:11px;color:#3dd68c;opacity:.85}
+.chat-link{color:#3dd68c;text-decoration:underline;word-break:break-all}
 .chat-inputrow{display:flex;gap:8px;padding:10px 12px 12px;border-top:1px solid rgba(255,255,255,.07);flex-shrink:0}
 .chat-input{flex:1;background:#0d1017;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:9px 12px;color:#eef0f6;font-size:13px;font-family:inherit;outline:none}
 .chat-input:focus{border-color:#3dd68c}
@@ -1294,6 +1295,42 @@ function addBubble(cls, text) {
   return el;
 }
 
+// Render markdown links [text](url) and raw mailto:/https:// URLs as clickable
+// anchors; everything else stays a plain text node. Never uses innerHTML with
+// model text and only allows http(s)/mailto schemes, so it's XSS-safe.
+function linkify(el, text) {
+  el.textContent = '';
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/[^\s<]+|mailto:[^\s<]+)/g;
+  let last = 0, m;
+  while ((m = pattern.exec(text)) !== null) {
+    if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+    let label, url, trailing = '';
+    if (m[2] !== undefined) {                       // markdown link: label + url (may contain spaces)
+      label = m[1]; url = m[2].trim();
+    } else {                                        // raw url
+      url = m[3];
+      const tm = url.match(/[.,;:!?)\]]+$/);         // strip trailing sentence punctuation
+      if (tm) { trailing = tm[0]; url = url.slice(0, -trailing.length); }
+      label = url;
+    }
+    if (/^(https?:|mailto:)/i.test(url)) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.textContent = label;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'chat-link';
+      el.appendChild(a);
+    } else {
+      el.appendChild(document.createTextNode(m[0]));  // unsafe/unknown scheme → plain text
+    }
+    if (trailing) el.appendChild(document.createTextNode(trailing));
+    last = pattern.lastIndex;
+  }
+  if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+  document.getElementById('chat-log').scrollTop = 1e9;
+}
+
 function toggleChat() {
   const wg = document.getElementById('chat-widget');
   const open = wg.style.display === 'none' || !wg.style.display;
@@ -1372,8 +1409,9 @@ async function sendChat() {
       }
     }
 
-    if (!visible.trim()) bubble.textContent = '(no response)';
-    chatHistory.push({ role:'assistant', content: visible.trim() || '(no response)' });
+    const finalText = visible.trim() || '(no response)';
+    linkify(bubble, finalText);   // render markdown/raw links as clickable <a>, rest as plain text
+    chatHistory.push({ role:'assistant', content: finalText });
 
     // Apply ticker actions, then re-optimize if requested
     const changed = applyChatAction(action);
