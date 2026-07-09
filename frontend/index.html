@@ -137,6 +137,15 @@ aside{
   cursor:pointer;transition:all .15s;white-space:nowrap;
 }
 .add-btn:hover{background:var(--gb2);border-color:rgba(61,214,140,.3);color:var(--g)}
+/* Ticker autocomplete */
+.add-wrap{position:relative}
+.ac-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--s3);border:1px solid var(--line2);border-radius:8px;max-height:236px;overflow-y:auto;z-index:60;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.ac-item{display:flex;align-items:baseline;gap:8px;padding:7px 10px;cursor:pointer}
+.ac-item:hover,.ac-item.active{background:var(--gb2)}
+.ac-sym{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--g);flex-shrink:0;min-width:46px}
+.ac-name{font-size:11px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-empty{padding:8px 10px;font-size:11px;color:var(--t3)}
+.ticker-help{margin-top:7px;font-size:10px;font-family:var(--mono);color:var(--t3);letter-spacing:.3px}
 
 /* Holdings table */
 .h-grid{display:grid;grid-template-columns:44px 1fr 44px;gap:0;align-items:center}
@@ -425,10 +434,15 @@ tbody td:nth-child(2){text-align:left}
       <div class="aside-block">
         <div class="aside-label">Instruments</div>
         <div class="chip-area" id="chips"></div>
-        <div class="add-row">
-          <input type="text" id="t-add" placeholder="Add ticker…" maxlength="10"/>
-          <button class="add-btn" onclick="addT()">+ Add</button>
+        <div class="add-wrap">
+          <div class="add-row">
+            <input type="text" id="t-add" placeholder="Add ticker or company…" maxlength="24" autocomplete="off"
+                   oninput="acFilter()" onkeydown="acKeydown(event)"/>
+            <button class="add-btn" onclick="addT()">+ Add</button>
+          </div>
+          <div id="ac-menu" class="ac-menu" style="display:none"></div>
         </div>
+        <div id="ticker-help" class="ticker-help"></div>
       </div>
 
       <!-- PORTFOLIO VALUE -->
@@ -732,14 +746,101 @@ function renderChips() {
     w.appendChild(c);
   });
   renderH();
+  updateTickerHelp();
+}
+
+// ── TICKER CATALOG / AUTOCOMPLETE ──
+let CATALOG = [], CATALOG_SET = new Set(), acMatches = [], acIndex = -1;
+
+async function loadCatalog() {
+  try {
+    const r = await fetch(`${API}/tickers`);
+    const j = await r.json();
+    CATALOG = j.tickers || [];
+    CATALOG_SET = new Set(CATALOG.map(t => t.symbol));
+  } catch (_) { /* offline: autocomplete disabled, manual add still works */ }
+  updateTickerHelp();
+}
+
+function updateTickerHelp() {
+  const el = document.getElementById('ticker-help');
+  if (!el) return;
+  el.textContent = CATALOG.length
+    ? `${tickers.length} selected · ${CATALOG.length} instruments available`
+    : '';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function acClose() {
+  const m = document.getElementById('ac-menu');
+  if (m) m.style.display = 'none';
+  acMatches = []; acIndex = -1;
+}
+
+function acFilter() {
+  const q = document.getElementById('t-add').value.trim();
+  const menu = document.getElementById('ac-menu');
+  acIndex = -1;
+  if (!q || !CATALOG.length) { acClose(); return; }
+  const up = q.toUpperCase(), lo = q.toLowerCase();
+  acMatches = CATALOG
+    .filter(t => !tickers.includes(t.symbol) &&
+                 (t.symbol.startsWith(up) || t.name.toLowerCase().includes(lo)))
+    .slice(0, 8);
+  if (!acMatches.length) {
+    menu.innerHTML = `<div class="ac-empty">No match in our ${CATALOG.length}-instrument universe</div>`;
+    menu.style.display = 'block';
+    return;
+  }
+  menu.innerHTML = acMatches.map((t, i) =>
+    `<div class="ac-item" data-i="${i}" onmousedown="acPick(${i})">` +
+    `<span class="ac-sym">${t.symbol}</span><span class="ac-name">${escapeHtml(t.name)}</span></div>`
+  ).join('');
+  menu.style.display = 'block';
+}
+
+function acHighlight() {
+  document.querySelectorAll('#ac-menu .ac-item').forEach((el, i) => el.classList.toggle('active', i === acIndex));
+}
+
+function acKeydown(e) {
+  const open = acMatches.length > 0 && document.getElementById('ac-menu').style.display !== 'none';
+  if (e.key === 'ArrowDown' && open)      { e.preventDefault(); acIndex = (acIndex + 1) % acMatches.length; acHighlight(); }
+  else if (e.key === 'ArrowUp' && open)   { e.preventDefault(); acIndex = (acIndex - 1 + acMatches.length) % acMatches.length; acHighlight(); }
+  else if (e.key === 'Enter')             { e.preventDefault(); (open && acIndex >= 0) ? acPick(acIndex) : addT(); }
+  else if (e.key === 'Escape')            { acClose(); }
+}
+
+function acPick(i) {
+  const t = acMatches[i];
+  if (!t) return;
+  document.getElementById('t-add').value = '';
+  acClose();
+  addSymbol(t.symbol);
+}
+
+// Add a symbol to the chips, validated against the catalog when known.
+function addSymbol(sym) {
+  const t = String(sym).trim().toUpperCase().replace(/[^A-Z0-9\-\.]/g, '');
+  if (!t) return;
+  if (tickers.includes(t)) { showErr(`${t} is already added.`); return; }
+  if (tickers.length >= 15) { showErr('Maximum 15 tickers.'); return; }
+  if (CATALOG.length && !CATALOG_SET.has(t)) {
+    showErr(`"${t}" isn't in our universe of ${CATALOG.length} instruments.`);
+    return;
+  }
+  hideErr();
+  tickers.push(t); renderChips();
 }
 
 function addT() {
   const inp = document.getElementById('t-add');
-  const t = inp.value.trim().toUpperCase().replace(/[^A-Z0-9\-\.]/g,'');
-  if (!t || tickers.includes(t)) { inp.value = ''; return; }
-  if (tickers.length >= 15) { showErr('Maximum 15 tickers.'); return; }
-  tickers.push(t); inp.value = ''; renderChips();
+  addSymbol(inp.value);
+  inp.value = '';
+  acClose();
 }
 
 function remT(t) {
@@ -1158,7 +1259,8 @@ function pct(v) { return (v*100).toFixed(2)+'%'; }
 
 // ── INIT ──
 renderChips();
-document.getElementById('t-add').addEventListener('keydown', e => { if(e.key==='Enter') addT(); });
+loadCatalog();
+document.addEventListener('click', e => { if (!e.target.closest('.add-wrap')) acClose(); });
 </script>
 </body>
 </html>

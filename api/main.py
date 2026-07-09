@@ -216,6 +216,24 @@ def root():
 def health():
     return {"status": "healthy ✅"}
 
+
+_ticker_catalog = None
+
+
+@app.get("/tickers")
+def tickers():
+    """Return the investable universe (symbol + company name) for the frontend picker."""
+    global _ticker_catalog
+    if _ticker_catalog is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tickers.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                names = json.load(f)
+        except FileNotFoundError:
+            names = {}
+        _ticker_catalog = [{"symbol": s, "name": n} for s, n in sorted(names.items())]
+    return {"count": len(_ticker_catalog), "tickers": _ticker_catalog}
+
 @app.post("/optimize")
 def optimize(request: OptimizeRequest):
     """
