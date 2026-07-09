@@ -12,7 +12,9 @@ import os
 import re
 import json
 import logging
+import smtplib
 import uvicorn
+from email.mime.text import MIMEText
 
 from optimizer import run_full_analysis
 
@@ -80,6 +82,13 @@ class TrackRequest(BaseModel):
     metadata   : Optional[dict] = None
 
 
+class ContactRequest(BaseModel):
+    name    : str = ""
+    email   : str = ""
+    message : str
+    source  : str = "chat"
+
+
 EXPLAIN_PROMPT = (
     "You are a senior portfolio manager. Analyze this AI-generated rebalancing "
     "and explain it in 3-4 sentences for an investor: (1) what the risk score "
@@ -98,12 +107,13 @@ CHAT_SYSTEM_PROMPT = (
     "Reference actual numbers from their portfolio when available.\n\n"
     "Never use bullet points. Always sound like a confident quant, not a "
     "disclaimer-heavy advisor.\n\n"
-    "If the user reports a bug, has a question about the product, or wants to "
-    "contact support: acknowledge it warmly, ask for their name and email, then "
-    "give them this direct mailto link as a fallback: "
-    "mailto:hi@axelpeluso.com?subject=PortfolioAI Support&body=Name:%0AEmail:%0AIssue: "
-    "— display it as a clickable link with the text 'or email us directly'. "
-    "Be conversational and brief.\n\n"
+    "If the user reports a bug, has a question, or wants to contact support: "
+    "acknowledge warmly, ask for their name and email, summarize their issue, "
+    "then end your response with exactly [SUPPORT_READY: <name> | <email> | "
+    "<issue summary>] on a new line so the system can log it and notify the team. "
+    "Only include that tag once you actually have their name and email; if either "
+    "is missing, just ask for it and do not emit the tag yet. The tag is hidden "
+    "from the user.\n\n"
     "PORTFOLIO ACTIONS: If the user wants to add or remove tickers, after your "
     "analysis emit a single machine-readable line exactly like:\n"
     '[ACTION]{"add":["TSLA"],"remove":[],"risk":null}\n'
@@ -177,7 +187,7 @@ def _supabase_client():
     return _supabase
 
 
-CONTROL_MARKERS = ("[REOPTIMIZE]", "[ACTION]")
+CONTROL_MARKERS = ("[REOPTIMIZE]", "[ACTION]", "[SUPPORT_READY")
 
 
 def _visible_cut(buf: str) -> int:
@@ -207,6 +217,19 @@ def _parse_actions(text: str) -> tuple:
         except (json.JSONDecodeError, ValueError):
             action = None
     return reoptimize, action
+
+
+def _parse_support(text: str):
+    """Extract {name, email, issue} from a [SUPPORT_READY: name | email | issue] tag."""
+    m = re.search(r"\[SUPPORT_READY:([^\]]*)\]", text, re.DOTALL)
+    if not m:
+        return None
+    parts = [p.strip() for p in m.group(1).split("|")]
+    return {
+        "name" : parts[0] if len(parts) > 0 else "",
+        "email": parts[1] if len(parts) > 1 else "",
+        "issue": parts[2] if len(parts) > 2 else "",
+    }
 
 
 # ── ROUTES ────────────────────────────────────────────────────
@@ -329,9 +352,12 @@ def chat(request: ChatRequest):
                         sent = cut
 
             reoptimize, action = _parse_actions(full)
+            support = _parse_support(full)
             meta = {"done": True, "reoptimize": reoptimize}
             if action is not None:
                 meta["action"] = action
+            if support is not None:
+                meta["support"] = support
             yield f"data: {json.dumps(meta)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
@@ -417,6 +443,60 @@ def analytics(x_admin_key: Optional[str] = Header(None)):
         "signups_per_day": dict(sorted(signups_per_day.items())),
         "total_events"   : len(events),
     }
+
+
+# ── SUPPORT / CONTACT ─────────────────────────────────────────
+def send_support_email(name, email, message, source):
+    """Send a support notification via Zoho SMTP. No-op if creds are unset."""
+    smtp_from = os.getenv("SUPPORT_EMAIL_FROM")
+    smtp_to   = os.getenv("SUPPORT_EMAIL_TO")
+    app_pass  = os.getenv("ZOHO_APP_PASSWORD")
+    if not all([smtp_from, smtp_to, app_pass]):
+        return
+
+    body = f"""New support request from PortfolioAI
+
+Name:    {name or 'Not provided'}
+Email:   {email or 'Not provided'}
+Source:  {source}
+
+Message:
+{message}
+
+---
+Reply directly to {email} to follow up.
+"""
+    msg = MIMEText(body)
+    msg['Subject']  = f"[PortfolioAI Support] {message[:50]}..."
+    msg['From']     = smtp_from
+    msg['To']       = smtp_to
+    msg['Reply-To'] = email or smtp_from
+
+    with smtplib.SMTP_SSL('smtp.zoho.com', 465) as server:
+        server.login(smtp_from, app_pass)
+        server.sendmail(smtp_from, smtp_to, msg.as_string())
+
+
+@app.post("/contact")
+def contact(request: ContactRequest):
+    """Log a support request to Supabase and notify the team by email. Best-effort."""
+    try:
+        client = _supabase_client()
+        client.table("support").insert({
+            "name"   : request.name,
+            "email"  : request.email,
+            "message": request.message,
+            "source" : request.source,
+        }).execute()
+    except Exception as e:
+        logging.warning(f"Supabase contact insert failed: {e}")
+
+    try:
+        send_support_email(request.name, request.email, request.message, request.source)
+    except Exception as e:
+        logging.warning(f"Support email failed: {e}")
+
+    return {"success": True}
 
 
 # ── RUN ───────────────────────────────────────────────────────
