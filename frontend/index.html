@@ -419,6 +419,57 @@ tbody td:nth-child(2){text-align:left}
 .chat-send{padding:9px 16px;border-radius:8px;border:1px solid #3dd68c;background:rgba(61,214,140,.1);color:#3dd68c;font-size:13px;font-family:var(--mono);cursor:pointer}
 .chat-send:disabled{opacity:.5;cursor:default}
 
+/* ─── BROKERAGE ─── */
+.bk-connect{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:9px 12px;border-radius:8px;
+  background:var(--gb2);border:1px solid rgba(61,214,140,.28);color:var(--g);
+  font-family:var(--sans);font-size:12.5px;font-weight:500;cursor:pointer;
+  transition:all .15s;
+}
+.bk-connect:hover{background:var(--gb);border-color:var(--g)}
+.bk-connect:disabled{opacity:.55;cursor:default}
+.bk-linked-row{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:7px;background:var(--s3);border:1px solid var(--line2)}
+.bk-dot{width:6px;height:6px;border-radius:50%;background:var(--g);flex-shrink:0}
+.bk-linked-text{font-size:11.5px;color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-x{background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0 2px;line-height:1}
+.bk-x:hover{color:var(--red)}
+.bk-refresh{width:100%;margin-top:6px;padding:6px;border-radius:6px;background:none;border:1px solid var(--line);color:var(--t3);font-family:var(--sans);font-size:11.5px;cursor:pointer;transition:all .15s}
+.bk-refresh:hover{border-color:var(--line2);color:var(--t2)}
+.bk-note{margin-top:7px;font-size:10.5px;color:var(--t3);line-height:1.5}
+.bk-note.err{color:var(--red)}
+
+.bk-modal{
+  position:relative;width:min(540px,100%);max-height:88vh;overflow-y:auto;
+  background:#12151c;border:1px solid rgba(255,255,255,.1);border-radius:16px;
+  padding:26px 24px 22px;box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+.bk-notes{margin-bottom:14px;display:flex;flex-direction:column;gap:6px}
+.bk-note-item{
+  font-size:11.5px;color:var(--amb);line-height:1.5;
+  background:var(--abb);border:1px solid rgba(245,166,35,.2);
+  border-radius:6px;padding:7px 10px;
+}
+.bk-list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.bk-list-head span{font-family:var(--mono);font-size:11px;color:var(--t2)}
+.bk-list-head span.over{color:var(--red)}
+.bk-selbtn{background:none;border:none;color:var(--g);font-family:var(--sans);font-size:11.5px;cursor:pointer;padding:0}
+.bk-selbtn:hover{text-decoration:underline}
+.bk-list{border:1px solid var(--line);border-radius:9px;overflow:hidden;max-height:290px;overflow-y:auto}
+.bk-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+.bk-row:last-child{border-bottom:none}
+.bk-row:hover{background:var(--s2)}
+.bk-row input{accent-color:var(--g);cursor:pointer;flex-shrink:0;width:14px;height:14px}
+.bk-sym{font-family:var(--mono);font-size:12px;color:var(--t1);min-width:62px}
+.bk-units{font-family:var(--mono);font-size:11px;color:var(--t3);flex:1}
+.bk-val{font-family:var(--mono);font-size:12px;color:var(--t1)}
+.bk-excluded{margin-top:14px;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--s2)}
+.bk-excluded-head{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--t3);margin-bottom:8px}
+.bk-ex-row{display:flex;align-items:baseline;gap:9px;font-size:11.5px;color:var(--t3);padding:3px 0}
+.bk-ex-sym{font-family:var(--mono);color:var(--t2);min-width:62px}
+.bk-ex-reason{flex:1;font-size:11px}
+.bk-fine{margin-top:12px;font-size:10.5px;color:var(--t3);text-align:center;line-height:1.5}
+
 /* ─── GUIDED TOUR ─── */
 .tour-block{position:fixed;background:rgba(6,8,12,.66);z-index:3000;display:none}
 .tour-ring{
@@ -514,8 +565,26 @@ tbody td:nth-child(2){text-align:left}
   <aside>
     <div class="aside-scroll">
 
+      <!-- BROKERAGE (hidden unless the API reports the feature enabled) -->
+      <div class="aside-block" id="bk-block" style="display:none">
+        <div class="aside-label">Brokerage</div>
+        <button class="bk-connect" id="bk-connect" onclick="bkConnect()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5L9.5 6.5M7 4.5l1-1a2.5 2.5 0 013.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 014.5 9l1-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Connect brokerage
+        </button>
+        <div class="bk-linked" id="bk-linked" style="display:none">
+          <div class="bk-linked-row">
+            <span class="bk-dot"></span>
+            <span class="bk-linked-text" id="bk-linked-text">Connected</span>
+            <button class="bk-x" onclick="bkDisconnect()" title="Disconnect">✕</button>
+          </div>
+          <button class="bk-refresh" onclick="bkLoadPositions()">Re-import holdings</button>
+        </div>
+        <div class="bk-note" id="bk-note"></div>
+      </div>
+
       <!-- TICKERS -->
-      <div class="aside-block">
+      <div class="aside-block" id="inst-block">
         <div class="aside-label">Instruments</div>
         <div class="chip-area" id="chips"></div>
         <div class="add-wrap">
@@ -770,6 +839,33 @@ tbody td:nth-child(2){text-align:left}
            placeholder="Add a ticker, change risk, ask anything…"
            onkeydown="if(event.key==='Enter')sendChat()">
     <button id="chat-send" class="chat-send" onclick="sendChat()">Send</button>
+  </div>
+</div>
+
+<!-- BROKERAGE IMPORT REVIEW -->
+<div id="bk-overlay" class="wl-overlay" style="display:none" onclick="if(event.target===this)bkCloseModal()">
+  <div class="bk-modal">
+    <button class="wl-close" onclick="bkCloseModal()" aria-label="Close">✕</button>
+    <div class="wl-title">Review positions</div>
+    <div class="wl-sub" id="bk-sub">Choose what to optimize.</div>
+
+    <div id="bk-notes" class="bk-notes"></div>
+
+    <div class="bk-list-head">
+      <span id="bk-count">0 of 15 selected</span>
+      <button class="bk-selbtn" onclick="bkSelectTop()">Reset to top 15</button>
+    </div>
+    <div class="bk-list" id="bk-list"></div>
+
+    <div class="bk-excluded" id="bk-excluded" style="display:none">
+      <div class="bk-excluded-head">Cannot be modelled</div>
+      <div id="bk-excluded-list"></div>
+    </div>
+
+    <button id="bk-import" class="wl-submit" onclick="bkImport()">Import selected</button>
+    <div class="bk-fine">
+      Holdings are read only. PortfolioAI never places trades and cannot move money.
+    </div>
   </div>
 </div>
 
@@ -1553,6 +1649,228 @@ function setText(id, val, cls) {
 }
 function pct(v) { return (v*100).toFixed(2)+'%'; }
 
+// ══ BROKERAGE IMPORT (SnapTrade, read-only) ═══════════════════
+// Connect a brokerage and let it fill the sidebar. Nothing here can trade.
+// The bearer token lives in sessionStorage only — it dies with the tab.
+
+const BK_TOKEN_KEY = 'snaptrade_token';
+let bkPositions = null;    // last reconciliation payload
+let bkMax = 15;
+
+const bkToken = () => sessionStorage.getItem(BK_TOKEN_KEY);
+const bkAuth  = () => ({ 'Authorization': 'Bearer ' + bkToken() });
+
+function bkNote(msg, isErr) {
+  const el = document.getElementById('bk-note');
+  el.textContent = msg || '';
+  el.className = 'bk-note' + (isErr ? ' err' : '');
+}
+
+// Hide the whole block unless the server says the feature is configured.
+async function bkInit() {
+  try {
+    const r = await fetch(`${API}/snaptrade/status`);
+    const s = await r.json();
+    if (!s.enabled) return;
+    bkMax = s.max_tickers || 15;
+    document.getElementById('bk-block').style.display = '';
+    if (bkToken()) bkRefreshLinked();
+  } catch (_) { /* feature stays hidden */ }
+}
+
+async function bkSession() {
+  if (bkToken()) return bkToken();
+  const r = await fetch(`${API}/snaptrade/session`, { method: 'POST' });
+  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || 'Could not start session');
+  const { token } = await r.json();
+  sessionStorage.setItem(BK_TOKEN_KEY, token);
+  return token;
+}
+
+async function bkConnect() {
+  const btn = document.getElementById('bk-connect');
+  btn.disabled = true;
+  bkNote('Opening your brokerage…');
+  track('snaptrade_connect_started');
+  try {
+    await bkSession();
+    const r = await fetch(`${API}/snaptrade/connect`, {
+      method: 'POST', headers: { ...bkAuth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uri: null })
+    });
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || 'Connect failed');
+    const { url } = await r.json();
+
+    const popup = window.open(url, 'snaptrade', 'width=520,height=760');
+    if (!popup) { bkNote('Allow pop-ups to connect your brokerage.', true); return; }
+    bkNote('Waiting for you to finish in the pop-up…');
+    bkPoll(popup);
+  } catch (e) {
+    bkNote(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// SnapTrade's portal is on their origin, so we cannot read its result directly.
+// Poll for an account appearing instead, and stop when the window closes.
+function bkPoll(popup) {
+  let tries = 0;
+  const iv = setInterval(async () => {
+    tries++;
+    let accounts = [];
+    try {
+      const r = await fetch(`${API}/snaptrade/accounts`, { headers: bkAuth() });
+      if (r.ok) accounts = (await r.json()).accounts || [];
+    } catch (_) {}
+
+    if (accounts.length) {
+      clearInterval(iv);
+      try { popup.close(); } catch (_) {}
+      track('snaptrade_connected', { accounts: accounts.length });
+      bkShowLinked(accounts);
+      bkLoadPositions();
+    } else if ((popup.closed && tries > 2) || tries > 150) {   // ~5 min ceiling
+      clearInterval(iv);
+      bkNote(popup.closed ? 'No account was connected.' : 'Timed out — try again.', true);
+    }
+  }, 2000);
+}
+
+async function bkRefreshLinked() {
+  try {
+    const r = await fetch(`${API}/snaptrade/accounts`, { headers: bkAuth() });
+    if (r.status === 401) { sessionStorage.removeItem(BK_TOKEN_KEY); return; }
+    const accounts = (await r.json()).accounts || [];
+    if (accounts.length) bkShowLinked(accounts);
+  } catch (_) {}
+}
+
+function bkShowLinked(accounts) {
+  document.getElementById('bk-connect').style.display = 'none';
+  document.getElementById('bk-linked').style.display = '';
+  const broker = accounts[0].broker || 'Brokerage';
+  document.getElementById('bk-linked-text').textContent =
+    accounts.length > 1 ? `${broker} · ${accounts.length} accounts` : broker;
+  bkNote('');
+}
+
+async function bkDisconnect() {
+  try { await fetch(`${API}/snaptrade/session`, { method: 'DELETE', headers: bkAuth() }); }
+  catch (_) {}
+  sessionStorage.removeItem(BK_TOKEN_KEY);
+  document.getElementById('bk-connect').style.display = '';
+  document.getElementById('bk-linked').style.display = 'none';
+  bkNote('Disconnected.');
+}
+
+async function bkLoadPositions() {
+  bkNote('Reading your positions…');
+  try {
+    const r = await fetch(`${API}/snaptrade/positions`, { headers: bkAuth() });
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || 'Could not read positions');
+    bkPositions = await r.json();
+    bkNote('');
+    bkOpenModal();
+  } catch (e) {
+    bkNote(e.message, true);
+  }
+}
+
+// ── review modal ──
+function bkOpenModal() {
+  const p = bkPositions;
+  if (!p) return;
+  bkMax = p.max_tickers || bkMax;
+
+  document.getElementById('bk-sub').textContent =
+    `${p.supported.length} position(s) we can model` +
+    (p.accounts && p.accounts.length ? ` across ${p.accounts.length} account(s).` : '.');
+
+  document.getElementById('bk-notes').innerHTML =
+    (p.notes || []).map(n => `<div class="bk-note-item">${esc(n)}</div>`).join('');
+
+  document.getElementById('bk-list').innerHTML = p.supported.map((s, i) => `
+    <label class="bk-row">
+      <input type="checkbox" ${s.selected ? 'checked' : ''} data-i="${i}" onchange="bkTally()">
+      <span class="bk-sym">${esc(s.symbol)}</span>
+      <span class="bk-units">${s.units} units</span>
+      <span class="bk-val">$${s.value.toLocaleString('en',{maximumFractionDigits:0})}</span>
+    </label>`).join('');
+
+  const ex = p.unsupported || [];
+  document.getElementById('bk-excluded').style.display = ex.length ? '' : 'none';
+  document.getElementById('bk-excluded-list').innerHTML = ex.map(u => `
+    <div class="bk-ex-row">
+      <span class="bk-ex-sym">${esc(u.symbol)}</span>
+      <span class="bk-ex-reason">${esc(u.reason)}</span>
+      <span>$${(u.value||0).toLocaleString('en',{maximumFractionDigits:0})}</span>
+    </div>`).join('');
+
+  bkTally();
+  document.getElementById('bk-overlay').style.display = 'flex';
+}
+
+function bkCloseModal() {
+  document.getElementById('bk-overlay').style.display = 'none';
+}
+
+function bkChecked() {
+  return [...document.querySelectorAll('#bk-list input:checked')]
+    .map(el => bkPositions.supported[+el.dataset.i]);
+}
+
+// The 15-ticker cap is a real pipeline constraint, not a UI preference: each
+// extra ticker trains another Random Forest, so 30 roughly doubles the run.
+function bkTally() {
+  const n = bkChecked().length;
+  const el = document.getElementById('bk-count');
+  el.textContent = `${n} of ${bkMax} selected`;
+  el.className = n > bkMax ? 'over' : '';
+  const btn = document.getElementById('bk-import');
+  btn.disabled = n < 2 || n > bkMax;
+  btn.textContent = n > bkMax ? `Deselect ${n - bkMax} to import`
+                  : n < 2     ? 'Select at least 2'
+                  : `Import ${n} position(s)`;
+}
+
+function bkSelectTop() {
+  document.querySelectorAll('#bk-list input').forEach(el => {
+    el.checked = bkPositions.supported[+el.dataset.i].selected;
+  });
+  bkTally();
+}
+
+function bkImport() {
+  const picked = bkChecked();
+  if (picked.length < 2 || picked.length > bkMax) return;
+
+  tickers = picked.map(p => p.symbol);
+  renderChips();
+
+  const total = picked.reduce((a, p) => a + p.value, 0);
+  document.getElementById('tot').value = Math.round(total);
+  renderH();                                    // rebuild the holdings grid
+  picked.forEach(p => {                         // then set each real value
+    const el = document.getElementById('h-' + p.symbol);
+    if (el) { el.value = Math.round(p.value); upP(p.symbol, total); }
+  });
+
+  track('snaptrade_import_completed', {
+    imported: picked.length,
+    available: bkPositions.supported.length,
+    excluded: (bkPositions.unsupported || []).length
+  });
+
+  bkCloseModal();
+  bkNote(`Imported ${picked.length} position(s). Run the optimization when ready.`);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
 // ══ GUIDED TOUR ═══════════════════════════════════════════════
 // Two acts: the inputs (act 1, before any run) and the results (act 2,
 // after the first optimization). Act 2 can't run earlier — #results is
@@ -1564,7 +1882,13 @@ const TOUR_ACT1 = [
   { title: 'Welcome to PortfolioAI',
     body: 'This terminal runs five machine-learning models over your holdings and returns a concrete trade list. The tour takes about a minute — you can leave at any point.',
     center: true, next: 'Show me around' },
-  { el: '.aside-block', title: 'Your instruments',
+  // Self-hides when SnapTrade is unconfigured: #bk-block stays display:none and
+  // tourPrep() filters steps whose target has no geometry.
+  { el: '#bk-block', title: 'Connect your brokerage',
+    body: 'Link a brokerage account and your positions fill in automatically — tickers, dollar amounts and total value. Read-only: PortfolioAI cannot place trades or move money.',
+    hint: 'Prefer not to connect? Enter everything by hand below — nothing here is required.',
+    place: 'right' },
+  { el: '#inst-block', title: 'Your instruments',
     body: 'These chips are the assets the optimizer will consider. Start from the defaults or build your own set — <b>2 to 15</b> instruments.',
     hint: 'Click the ✕ on any chip to drop it.', place: 'right' },
   { el: '.add-wrap', title: 'Add from 289 instruments',
@@ -1788,8 +2112,11 @@ if (window.ResizeObserver) {
 // ── INIT ──
 renderChips();
 loadCatalog();
+bkInit();
 document.addEventListener('click', e => { if (!e.target.closest('.add-wrap')) acClose(); });
-if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => startTour(false), 700);
+// Wait for bkInit's status call so the brokerage tour step reflects reality —
+// tourPrep() drops steps whose target is hidden, and #bk-block starts hidden.
+if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => startTour(false), 1200);
 </script>
 </body>
 </html>
