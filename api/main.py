@@ -631,22 +631,43 @@ def snaptrade_session(request: Request):
     token   = secrets.token_urlsafe(32)
     expires = datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
 
+    # Cifrar antes del insert: si la clave Fernet esta mal formada, el fallo es
+    # de configuracion y conviene distinguirlo de un problema de base de datos.
+    try:
+        encrypted = _fernet().encrypt(user_secret.encode()).decode()
+    except HTTPException:
+        raise
+    except Exception as e:                      # noqa: BLE001
+        try:
+            st.delete_user(st_user_id)
+        except Exception:                       # noqa: BLE001
+            logging.warning(f"orphaned SnapTrade user {st_user_id}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"SNAPTRADE_ENCRYPTION_KEY invalida ({type(e).__name__}). "
+                   f"Debe ser una clave Fernet: 44 caracteres base64 url-safe.")
+
     try:
         _supabase_client().table(SNAPTRADE_TABLE).insert({
             "kind":           "session",
             "token_hash":     _hash_token(token),
             "st_user_id":     st_user_id,
-            "st_user_secret": _fernet().encrypt(user_secret.encode()).decode(),
+            "st_user_secret": encrypted,
             "expires_at":     expires.isoformat(),
         }).execute()
-    except Exception:
+    except Exception as e:                      # noqa: BLE001
         # Never strand a registered SnapTrade user we cannot reach again —
         # those are billed per connection.
         try:
             st.delete_user(st_user_id)
         except Exception:                       # noqa: BLE001
             logging.warning(f"orphaned SnapTrade user {st_user_id}")
-        raise HTTPException(status_code=500, detail="Could not start session.")
+        # El tipo y el mensaje del driver, sin secretos: sin esto un fallo de
+        # tabla, de permisos o de columna se ven todos igual.
+        logging.warning(f"snaptrade session insert failed: {type(e).__name__}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudo guardar la sesion ({type(e).__name__}): {str(e)[:200]}")
 
     return {"token": token, "expires_at": expires.isoformat()}
 
