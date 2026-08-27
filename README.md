@@ -98,6 +98,8 @@ Final Project/
 ├── notebook/
 │   └── portfolio_optimizer.ipynb   ← full ML walk-through
 ├── docs/
+│   ├── executive-summary.md    ← qué es, cómo funciona, estado medido, límites
+│   ├── demo-script.md          ← guion de demo paso a paso + plan de contingencia
 │   ├── snaptrade-setup.md      ← brokerage import: credentials, table, cleanup
 │   └── dormant-support-flow.md ← parked in-app support (Supabase + email) design
 ├── .github/workflows/
