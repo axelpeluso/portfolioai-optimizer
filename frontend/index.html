@@ -449,6 +449,8 @@ tbody td:nth-child(2){text-align:left}
 .tax-split{font-family:var(--mono);font-size:9.5px;color:var(--t3);white-space:nowrap}
 .tax-acct{font-size:9.5px;color:var(--t3);white-space:nowrap}
 .tax-unknown{font-family:var(--mono);font-size:9.5px;color:var(--t4);white-space:nowrap}
+.tax-method{font-family:var(--mono);font-size:9px;color:var(--t4);white-space:nowrap;letter-spacing:.2px}
+.tax-range{font-family:var(--mono);font-size:9px;color:var(--t3);white-space:nowrap;opacity:.9}
 .tax-chip{display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:9px;background:var(--s3);border:1px solid var(--line);color:var(--t3);white-space:nowrap}
 
 /* ─── BROKERAGE ─── */
@@ -718,6 +720,23 @@ tbody td:nth-child(2){text-align:left}
             <input id="rate-incl" class="rate-inp" type="number" min="0" max="100" step="0.1" oninput="ratesChanged()">
             <label class="rate-lbl">Marginal rate %</label>
             <input id="rate-marg" class="rate-inp" type="number" min="0" max="100" step="0.1" oninput="ratesChanged()">
+          </div>
+
+          <div id="lot-method-wrap">
+            <label class="rate-lbl">Which lots does your broker sell?</label>
+            <select id="lot-method" class="opt-sel">
+              <option value="FIFO" selected>FIFO — oldest first (most common)</option>
+              <option value="LIFO">LIFO — newest first</option>
+              <option value="HIFO">HIFO — highest cost first</option>
+            </select>
+            <div class="opt-help" style="padding-left:0">
+              On a partial sale this changes the gain substantially. Check your
+              broker's setting — we cannot see it.
+            </div>
+          </div>
+          <div id="lot-method-ca" class="opt-help" style="padding-left:0;display:none">
+            Canada uses adjusted cost base (a weighted average). FIFO, LIFO and
+            HIFO are not permitted, so no choice applies.
           </div>
         </div>
       </div>
@@ -2158,6 +2177,10 @@ function ratesChanged() {
   const us = document.getElementById('rate-region').value === 'us';
   document.getElementById('rate-us').style.display = us ? '' : 'none';
   document.getElementById('rate-ca').style.display = us ? 'none' : '';
+  // The lot-method choice is meaningless under Canadian rules — hide it and
+  // explain, rather than offering a setting that would be ignored.
+  document.getElementById('lot-method-wrap').style.display = us ? '' : 'none';
+  document.getElementById('lot-method-ca').style.display   = us ? 'none' : '';
   // Tax-aware selling is gated on rates: without them it would have to invent
   // a number, and the whole design says we never do that.
   const ta = document.getElementById('opt-taxaware');
@@ -2190,6 +2213,8 @@ function taxContext() {
   if (!Object.keys(ctx.positions).length) return null;
   const r = taxRates();
   if (r) ctx.rates = r;
+  const lm = document.getElementById('lot-method');
+  if (lm) ctx.lot_method = lm.value;      // ignored server-side where ACB applies
   return ctx;
 }
 
@@ -2222,6 +2247,17 @@ function taxLine(symbol, amount) {
     html += `<span class="tax-split">${money(s.short_term)} &lt;1yr · ${money(s.long_term)} &gt;1yr</span>`;
   } else if (s.fidelity === 'average') {
     html += `<span class="tax-split">holding period unknown</span>`;
+  }
+  // The method is an assumption, not a fact about the account — say so, and
+  // show the spread when a partial sale could land anywhere inside it.
+  if (t.method) {
+    html += t.method_forced
+      ? `<span class="tax-method">${esc(t.method)} — required in Canada</span>`
+      : `<span class="tax-method">assuming ${esc(t.method)}</span>`;
+  }
+  if (t.range) {
+    html += `<span class="tax-range">${money(t.range.low)}–${money(t.range.high)} `
+          + `depending on lots sold</span>`;
   }
   html += `<span class="tax-acct">${esc(t.account)}</span></div>`;
   return html;

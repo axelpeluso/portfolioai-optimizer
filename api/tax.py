@@ -155,9 +155,38 @@ def _num(v: Any) -> float:
         return 0.0
 
 
+# Lot-selection methods we can model.
+#   FIFO/LIFO/HIFO — which lots a US sale is deemed to consume.
+#   ACB            — Canada's adjusted cost base: a weighted average across all
+#                    identical property. FIFO/LIFO/HIFO are NOT permitted for
+#                    Canadian tax purposes, so ACB is forced, not offered.
+METHODS    = ("FIFO", "LIFO", "HIFO", "ACB")
+US_METHODS = ("FIFO", "LIFO", "HIFO")
+
+
+def resolve_method(jurisdiction: str, requested: str | None = None) -> tuple[str, bool]:
+    """(method, forced). Canada gets ACB regardless of what was asked for."""
+    if jurisdiction == CA:
+        return "ACB", True
+    req = (requested or "FIFO").upper()
+    return (req if req in US_METHODS else "FIFO"), False
+
+
+def _order_lots(lots: list[dict], method: str) -> list[dict]:
+    if method == "LIFO":
+        return sorted(lots, key=lambda l: (l["date"] or date.min), reverse=True)
+    if method == "HIFO":
+        return sorted(lots, key=lambda l: -l["unit_basis"])
+    return sorted(lots, key=lambda l: (l["date"] or date.min))      # FIFO
+
+
 def sale_consequence(position: dict, sell_value: float,
                      asof: date | None = None, method: str = "FIFO") -> dict:
-    """What selling `sell_value` of this position realizes.
+    """What selling `sell_value` of this position realizes, under `method`.
+
+    On a PARTIAL sale the method dominates the answer — the same trade can
+    differ severalfold between FIFO and HIFO — so the method is returned and
+    must be shown alongside the number.
 
     Fidelity degrades honestly rather than guessing:
       "lots"    tax_lots present            -> gain AND short/long split
@@ -173,11 +202,18 @@ def sale_consequence(position: dict, sell_value: float,
     units_to_sell = min(sell_value / price, units_held) if units_held else sell_value / price
     lots = _lots(position)
 
+    if lots and method == "ACB":
+        # Weighted average across every lot; no holding-period concept applies.
+        total_units = sum(l["units"] for l in lots)
+        total_basis = sum(l["basis"] for l in lots)
+        acb = total_basis / total_units if total_units else 0.0
+        return {"fidelity": "lots", "method": "ACB",
+                "units_sold": round(units_to_sell, 6),
+                "gain": round(units_to_sell * (price - acb), 2),
+                "short_term": None, "long_term": None, "undated": 0.0}
+
     if lots:
-        # FIFO sells oldest first; HIFO sells the highest-cost lots first, which
-        # realizes the least gain. We report, we do not instruct a broker.
-        lots = sorted(lots, key=lambda l: (l["date"] or date.min)) if method == "FIFO" \
-               else sorted(lots, key=lambda l: -l["unit_basis"])
+        lots = _order_lots(lots, method)
         remaining, gain, short, long_, unknown_age = units_to_sell, 0.0, 0.0, 0.0, 0.0
         for lot in lots:
             if remaining <= 1e-9:
@@ -212,10 +248,36 @@ def sale_consequence(position: dict, sell_value: float,
             "reason": "cost basis not provided by this brokerage"}
 
 
+def sale_range(position: dict, sell_value: float, jurisdiction: str,
+               asof: date | None = None) -> dict | None:
+    """Spread of realizable gain across the permitted methods.
+
+    A partial sale has no single true answer until the broker picks lots, so a
+    lone figure implies precision we do not have. Returns None when every
+    permitted method agrees — a full exit, one lot, or Canada, where ACB is the
+    only option.
+    """
+    if jurisdiction == CA:
+        return None
+    results = {}
+    for m in US_METHODS:
+        c = sale_consequence(position, sell_value, asof, m)
+        if c["fidelity"] != "lots":
+            return None
+        results[m] = c["gain"]
+    lo_m = min(results, key=results.get)
+    hi_m = max(results, key=results.get)
+    if abs(results[hi_m] - results[lo_m]) < 1.0:
+        return None                      # methods agree; a range would be noise
+    return {"low": results[lo_m], "low_method": lo_m,
+            "high": results[hi_m], "high_method": hi_m}
+
+
 # ── portfolio-level summary ───────────────────────────────────
 def portfolio_summary(rebalancing: dict, total_value: float,
                       positions: dict | None = None,
-                      accounts: dict | None = None) -> dict:
+                      accounts: dict | None = None,
+                      lot_method: str | None = None) -> dict:
     """Turnover, and realized gains where basis is known.
 
     Turnover needs no tax data at all, which is why it is always reported: it is
@@ -247,7 +309,10 @@ def portfolio_summary(rebalancing: dict, total_value: float,
             sheltered_only = False
         if cls["sheltered"] is True:
             continue                     # no realization event to report
-        c = sale_consequence(pos, -amt)
+        # Canada is forced to ACB here too — summing a FIFO figure into a
+        # portfolio total would carry the same error upward.
+        m, _ = resolve_method(cls["jurisdiction"], lot_method)
+        c = sale_consequence(pos, -amt, method=m)
         if c["fidelity"] == "none":
             unknown += 1
             continue
@@ -297,8 +362,8 @@ def estimate_tax(short_term: float, long_term: float, rates: dict | None) -> dic
 
 
 # ── tax-aware penalty weights ─────────────────────────────────
-def penalty_weights(positions: dict, accounts: dict,
-                    rates: dict | None, scale: float = 8.0) -> dict:
+def penalty_weights(positions: dict, accounts: dict, rates: dict | None,
+                    scale: float = 8.0, lot_method: str | None = None) -> dict:
     """Per-asset multipliers for the optimizer's turnover penalty.
 
     Selling an asset carrying a large embedded gain in a taxable account should
@@ -320,13 +385,15 @@ def penalty_weights(positions: dict, accounts: dict,
     out: dict[str, float] = {}
     for sym, pos in (positions or {}).items():
         acct = (accounts or {}).get(pos.get("_account")) or {}
-        if classify_account(acct)["sheltered"] is not False:
+        cls = classify_account(acct)
+        if cls["sheltered"] is not False:
             continue                      # sheltered or unknown: no tax cost to model
 
         value = _num(pos.get("price")) * _num(pos.get("units"))
         if value <= 0:
             continue
-        c = sale_consequence(pos, value)          # cost of liquidating it entirely
+        m, _ = resolve_method(cls["jurisdiction"], lot_method)
+        c = sale_consequence(pos, value, method=m)   # cost of liquidating it entirely
         if c["fidelity"] == "none":
             continue
 

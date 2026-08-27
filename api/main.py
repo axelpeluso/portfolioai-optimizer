@@ -51,9 +51,10 @@ class TaxContext(BaseModel):
     Sent by the client after a brokerage import. Nothing here is persisted, and
     omitting it simply means no tax panel is returned.
     """
-    positions : dict = {}          # symbol -> {price, units, tax_lots, _account, …}
-    accounts  : dict = {}          # account id -> {raw_type, currency, …}
-    rates     : Optional[dict] = None   # the USER'S own rates; no defaults exist
+    positions  : dict = {}          # symbol -> {price, units, tax_lots, _account, …}
+    accounts   : dict = {}          # account id -> {raw_type, currency, …}
+    rates      : Optional[dict] = None   # the USER'S own rates; no defaults exist
+    lot_method : Optional[str] = None    # FIFO | LIFO | HIFO; ignored where ACB is required
 
 
 class OptimizeRequest(BaseModel):
@@ -386,7 +387,8 @@ def optimize(request: OptimizeRequest):
     # it stays a no-op instead of guessing.
     tax_weights = None
     if request.tax_aware and ctx and ctx.rates:
-        tax_weights = taxmod.penalty_weights(ctx.positions, ctx.accounts, ctx.rates) or None
+        tax_weights = taxmod.penalty_weights(ctx.positions, ctx.accounts, ctx.rates,
+                                             lot_method=ctx.lot_method) or None
         if tax_weights and not mode:
             mode = "moderate"     # tax weighting is meaningless with no penalty
 
@@ -410,8 +412,9 @@ def optimize(request: OptimizeRequest):
 def _tax_disclosure(result: dict, ctx: "TaxContext", taxmod) -> dict:
     """Per-position and portfolio-level tax facts. Never a bill unless rates given."""
     positions, accounts = ctx.positions or {}, ctx.accounts or {}
+    requested = ctx.lot_method
     summary = taxmod.portfolio_summary(result["rebalancing"], result["total_value"],
-                                       positions, accounts)
+                                       positions, accounts, lot_method=requested)
     per_symbol = {}
     for sym, row in result["rebalancing"].items():
         pos  = positions.get(sym)
@@ -422,7 +425,16 @@ def _tax_disclosure(result: dict, ctx: "TaxContext", taxmod) -> dict:
                  "holding_period_matters": cls["holding_period_matters"],
                  "profile": taxmod.asset_profile(sym, cls["jurisdiction"])}
         if pos and row.get("trade_amount", 0) < 0 and cls["sheltered"] is False:
-            entry["sale"] = taxmod.sale_consequence(pos, -row["trade_amount"])
+            method, forced = taxmod.resolve_method(cls["jurisdiction"], requested)
+            entry["sale"] = taxmod.sale_consequence(pos, -row["trade_amount"],
+                                                    method=method)
+            entry["method"] = method
+            # Canada permits only ACB; say so rather than looking like a choice.
+            entry["method_forced"] = forced
+            # A partial sale has no single answer until lots are picked.
+            rng = taxmod.sale_range(pos, -row["trade_amount"], cls["jurisdiction"])
+            if rng:
+                entry["range"] = rng
         per_symbol[sym] = entry
 
     est = None

@@ -279,6 +279,22 @@ The line drawn throughout is **facts vs. estimates**:
   Only ever produced from rates **the user types in**, and labelled illustrative.
   There are no default rates anywhere in the codebase.
 
+### Which lots get sold
+
+On a **partial** sale the lot-selection method dominates the answer — the same
+$5,000 trade can realize $500 or $4,000 depending on which lots are consumed.
+Rebalancing produces almost nothing but partial sales, so the assumption is
+stated on screen rather than hidden:
+
+- **US accounts** default to FIFO, with LIFO and HIFO selectable, because we
+  cannot see what a brokerage is actually configured to do. Every figure is
+  labelled "assuming FIFO" (or whichever is chosen).
+- **Canadian accounts** are forced to **adjusted cost base** (a weighted
+  average). FIFO/LIFO/HIFO are not permitted for Canadian tax purposes, so the
+  selector is hidden and the reason given.
+- Where methods disagree, the **range** is shown too — "$500–$4,000 depending on
+  lots sold" is more honest than any single number.
+
 Safety properties that are enforced by tests, not convention:
 
 - An unrecognised account type reports "not identified" — **never** "taxable".

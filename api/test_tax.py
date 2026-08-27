@@ -91,6 +91,78 @@ def test_partial_sale_only_counts_units_sold():
     assert c["gain"] == 1250.0
 
 
+# ── lot method: the assumption must be explicit and jurisdiction-correct ──
+SPLIT_LOTS = [lot(50, 20.0, 900), lot(50, 90.0, 100)]   # cheap+old, dear+new
+
+
+def test_method_dominates_a_partial_sale():
+    """Same trade, different method, several-fold difference — hence disclosure."""
+    p = position(price=100.0, units=100, lots=SPLIT_LOTS)
+    fifo = tax.sale_consequence(p, 5000.0, asof=TODAY, method="FIFO")
+    lifo = tax.sale_consequence(p, 5000.0, asof=TODAY, method="LIFO")
+    hifo = tax.sale_consequence(p, 5000.0, asof=TODAY, method="HIFO")
+    assert fifo["gain"] == 4000.0
+    assert lifo["gain"] == 500.0
+    assert hifo["gain"] == 500.0
+    assert fifo["gain"] > hifo["gain"]
+
+
+def test_every_method_agrees_on_a_full_exit():
+    p = position(price=100.0, units=100, lots=SPLIT_LOTS)
+    gains = {m: tax.sale_consequence(p, 10000.0, asof=TODAY, method=m)["gain"]
+             for m in ("FIFO", "LIFO", "HIFO", "ACB")}
+    assert len(set(gains.values())) == 1, gains
+
+
+def test_canada_is_forced_to_acb():
+    """FIFO/LIFO/HIFO are not permitted for Canadian tax purposes."""
+    m, forced = tax.resolve_method(tax.CA, "HIFO")
+    assert (m, forced) == ("ACB", True)
+
+
+def test_acb_uses_the_weighted_average():
+    p = position(price=100.0, units=100, lots=SPLIT_LOTS)   # avg cost $55
+    c = tax.sale_consequence(p, 5000.0, asof=TODAY, method="ACB")
+    assert c["gain"] == 2250.0          # 50 * (100 - 55)
+    assert c["method"] == "ACB"
+    assert c["short_term"] is None, "Canada has no holding-period split"
+
+
+def test_us_honours_the_requested_method_and_defaults_to_fifo():
+    assert tax.resolve_method(tax.US, "HIFO") == ("HIFO", False)
+    assert tax.resolve_method(tax.US, None) == ("FIFO", False)
+    assert tax.resolve_method(tax.US, "nonsense") == ("FIFO", False)
+
+
+def test_range_reports_the_spread_where_methods_disagree():
+    p = position(price=100.0, units=100, lots=SPLIT_LOTS)
+    r = tax.sale_range(p, 5000.0, tax.US, asof=TODAY)
+    assert r["low"] == 500.0 and r["high"] == 4000.0
+    assert r["high_method"] == "FIFO"
+
+
+def test_no_range_on_a_full_exit():
+    p = position(price=100.0, units=100, lots=SPLIT_LOTS)
+    assert tax.sale_range(p, 10000.0, tax.US, asof=TODAY) is None
+
+
+def test_no_range_for_canada():
+    p = position(price=100.0, units=100, lots=SPLIT_LOTS)
+    assert tax.sale_range(p, 5000.0, tax.CA, asof=TODAY) is None
+
+
+def test_portfolio_summary_uses_acb_for_canadian_accounts():
+    """The bug this fixes: a FIFO figure summed into a Canadian total."""
+    positions = {"AAPL": position(price=100.0, units=100, lots=SPLIT_LOTS)}
+    rebal = {"AAPL": {"trade_amount": -5000.0}}
+    ca = tax.portfolio_summary(rebal, 10000.0, positions,
+                               {"a1": {"raw_type": "CASH", "currency": "CAD"}})
+    us = tax.portfolio_summary(rebal, 10000.0, positions,
+                               {"a1": {"raw_type": "MARGIN", "currency": "USD"}})
+    assert ca["realized_gain"] == 2250.0, "Canada must use ACB"
+    assert us["realized_gain"] == 4000.0, "US defaults to FIFO"
+
+
 # ── account classification: unknown must stay unknown ─────────
 def test_us_sheltered():
     c = tax.classify_account({"raw_type": "ROTH IRA", "currency": "USD"})
