@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "purpose": "Asset tax character per symbol. Drives descriptive labels only - nothing here feeds the optimizer or computes a tax figure.",
+    "why_a_list": "No API supplies this. Pattern matching over company names was tried and failed in both directions: it missed VNQ, XLRE, LQD and EMB, and it matched MA, QCOM, TXN and UNH on the word 'Incorporated'. Every entry below is hand-reviewed.",
+    "default": "Symbols absent from `symbols` are treated as `equity`.",
+    "scope": "General characterisations, not advice. Rules marked `us` do not apply outside the United States.",
+    "maintenance": "When adding tickers to tickers.json, classify any REIT, bond, commodity, crypto or futures product here. Getting it wrong mislabels, it does not miscalculate."
+  },
+
+  "categories": {
+    "equity": {
+      "label": "Equity",
+      "income": "Dividends, if any, may be qualified when the holding-period rules are met.",
+      "us": "Qualified dividends are taxed at long-term capital-gains rates; non-qualified at ordinary rates."
+    },
+    "reit": {
+      "label": "REIT",
+      "income": "Distributions are largely ordinary income rather than qualified dividends.",
+      "us": "REIT distributions are mostly non-qualified and taxed at ordinary rates. Part may be return of capital, which lowers your cost basis instead of being taxed now."
+    },
+    "bond": {
+      "label": "Bond fund",
+      "income": "Distributions are interest income, generally taxed at ordinary rates rather than dividend rates.",
+      "us": "Interest is taxed at ordinary rates. Treasury interest is generally exempt from state and local tax."
+    },
+    "precious_metal": {
+      "label": "Precious metal trust",
+      "income": "Physically backed metal trusts are often taxed less favourably than equities.",
+      "us": "The IRS treats these as collectibles: long-term gains can be taxed up to 28%, not the usual 15/20% long-term rate."
+    },
+    "commodity_futures": {
+      "label": "Commodity futures fund",
+      "income": "Futures-based funds frequently have their own tax regime and reporting.",
+      "us": "Often structured as partnerships issuing a Schedule K-1 rather than a 1099, with Section 1256 60/40 treatment - gains are split 60% long-term and 40% short-term regardless of holding period."
+    },
+    "crypto_etp": {
+      "label": "Crypto ETP",
+      "income": "Treatment varies by structure and is still developing.",
+      "us": "Spot trusts are generally grantor trusts; futures-based products may fall under Section 1256. Structures differ product to product."
+    },
+    "volatility": {
+      "label": "Volatility futures",
+      "income": "Futures-based, with its own reporting regime.",
+      "us": "Typically Section 1256 60/40 treatment and K-1 reporting. Designed for short holding periods."
+    }
+  },
+
+  "symbols": {
+    "AMT":  "reit",
+    "AVB":  "reit",
+    "CCI":  "reit",
+    "DLR":  "reit",
+    "EQIX": "reit",
+    "O":    "reit",
+    "PLD":  "reit",
+    "SPG":  "reit",
+    "VNQ":  "reit",
+    "XLRE": "reit",
+
+    "AGG":  "bond",
+    "BND":  "bond",
+    "EMB":  "bond",
+    "HYG":  "bond",
+    "IEF":  "bond",
+    "JNK":  "bond",
+    "LQD":  "bond",
+    "SHY":  "bond",
+    "TIP":  "bond",
+    "TLT":  "bond",
+
+    "GLD":  "precious_metal",
+    "IAU":  "precious_metal",
+    "SLV":  "precious_metal",
+
+    "BNO":  "commodity_futures",
+    "CORN": "commodity_futures",
+    "CPER": "commodity_futures",
+    "DBA":  "commodity_futures",
+    "DBB":  "commodity_futures",
+    "PDBC": "commodity_futures",
+    "UNG":  "commodity_futures",
+    "USO":  "commodity_futures",
+    "WEAT": "commodity_futures",
+
+    "BITO": "crypto_etp",
+    "ETHA": "crypto_etp",
+    "FBTC": "crypto_etp",
+    "GBTC": "crypto_etp",
+    "IBIT": "crypto_etp",
+
+    "VIXY": "volatility"
+  }
+}

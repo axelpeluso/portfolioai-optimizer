@@ -322,8 +322,31 @@ def portfolio_performance(w, exp_ret, cov):
     return r, vol, (r - RISK_FREE) / vol
 
 
+# Penalty strength for the opt-in "minimize trading" mode. Exposed as named
+# levels rather than a raw number — a lambda is not a user-facing concept.
+TURNOVER_LAMBDA = {'light': 0.5, 'moderate': 2.0, 'strong': 6.0}
+
+
 def run_optimizer(tickers, expected_returns, cov_matrix,
-                  risk_score, cluster_map) -> dict:
+                  risk_score, cluster_map,
+                  current_weights=None, turnover_penalty=None,
+                  tax_weights=None) -> dict:
+    """Solve Max-Sharpe and Min-Variance.
+
+    With `turnover_penalty` unset this is exactly the original solver — same
+    objective, same starting point, same result. That equivalence is asserted by
+    test_optimizer_modes.py and must not be broken casually: users who never
+    opt in should see the numbers they have always seen.
+
+    When set, the objective becomes
+
+        maximize  Sharpe − λ · Σ pᵢ·(wᵢ − wᵢ_current)²
+
+    Quadratic rather than |Δw| so the objective stays smooth for SLSQP. `pᵢ` is
+    1 everywhere for plain "minimize trading"; `tax_weights` replaces it with a
+    per-asset cost so that selling a large embedded gain is discouraged more
+    than selling a loss.
+    """
     n         = len(tickers)
     max_w     = 0.40 if risk_score < 0.35 else (0.30 if risk_score < 0.65 else 0.20)
     min_def   = 0.10 if risk_score > 0.50 else 0.02
@@ -333,9 +356,25 @@ def run_optimizer(tickers, expected_returns, cov_matrix,
     constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
     w0          = np.ones(n) / n
 
+    lam = TURNOVER_LAMBDA.get(turnover_penalty) if isinstance(turnover_penalty, str) \
+          else turnover_penalty
+    use_penalty = bool(lam) and current_weights is not None
+    if use_penalty:
+        cw = np.array([float(current_weights.get(t, 0.0)) for t in tickers])
+        pw = np.array([float((tax_weights or {}).get(t, 1.0)) for t in tickers])
+        # Start from where the portfolio already is: better conditioned for a
+        # penalised objective, and it keeps the solver near a low-turnover basin.
+        w0 = cw if cw.sum() > 0 else w0
+
+    def neg_sharpe(w):
+        s = -portfolio_performance(w, expected_returns, cov_matrix)[2]
+        if use_penalty:
+            s += lam * float(np.sum(pw * (w - cw) ** 2))
+        return s
+
 # Max Sharpe
     res = minimize(
-        lambda w: -portfolio_performance(w, expected_returns, cov_matrix)[2],
+        neg_sharpe,
         w0, method='SLSQP', bounds=bounds, constraints=constraints,
         options={'maxiter': 1000, 'ftol': 1e-9}
     )
@@ -345,10 +384,12 @@ def run_optimizer(tickers, expected_returns, cov_matrix,
     opt_w = res.x
     opt_r, opt_v, opt_s = portfolio_performance(opt_w, expected_returns, cov_matrix)
 
-    # Min Variance
+    # Min Variance — deliberately unpenalised and started from equal weights.
+    # It is a reference point ("what is the lowest-risk mix available"), not a
+    # proposal to trade toward, so turnover cost does not belong in it.
     res_mv = minimize(
         lambda w: np.dot(w.T, np.dot(cov_matrix, w)),
-        w0, method='SLSQP', bounds=bounds, constraints=constraints
+        np.ones(n) / n, method='SLSQP', bounds=bounds, constraints=constraints
     )
     if not res_mv.success:
         import logging
@@ -375,7 +416,10 @@ def blend_returns(ticker, rf_pred, hist_ret, r2, blend=0.3):
 
 
 # ── 8. MASTER FUNCTION ───────────────────────────────────────
-def run_full_analysis(tickers: list, current_holdings: dict) -> dict:
+def run_full_analysis(tickers: list, current_holdings: dict,
+                      turnover_penalty=None, tax_weights=None) -> dict:
+    """Full pipeline. With both optional arguments unset the result is identical
+    to the pre-tax-disclosure implementation — see test_optimizer_modes.py."""
     # 1. Data
     prices, returns, tickers = fetch_data(tickers)
 
@@ -421,14 +465,21 @@ def run_full_analysis(tickers: list, current_holdings: dict) -> dict:
     cov_matrix = lw.covariance_ * 252
 
     # 8. Optimize
-    opt_result  = run_optimizer(tickers, exp_returns, cov_matrix,
-                                risk_score, cluster_map)
-    opt_weights = opt_result['optimal_weights']
-
-    # 9. Rebalancing
+    #    Current weights are needed before the solve for the opt-in turnover
+    #    penalty, so the portfolio total moves up from step 9.
     total_value = sum(current_holdings.get(t, 0) for t in tickers)
     if total_value == 0:
         total_value = 10000
+    current_weights = {t: current_holdings.get(t, 0) / total_value for t in tickers}
+
+    opt_result  = run_optimizer(tickers, exp_returns, cov_matrix,
+                                risk_score, cluster_map,
+                                current_weights=current_weights,
+                                turnover_penalty=turnover_penalty,
+                                tax_weights=tax_weights)
+    opt_weights = opt_result['optimal_weights']
+
+    # 9. Rebalancing
 
     rebalancing = {}
     for t in tickers:

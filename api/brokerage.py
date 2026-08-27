@@ -134,6 +134,11 @@ def list_accounts(user_id: str, user_secret: str) -> list[dict]:
                         or "Brokerage"),
             "value":   _num((a.get("balance") or {}).get("total", {}).get("amount")),
             "currency": ((a.get("balance") or {}).get("total", {}) or {}).get("currency"),
+            # Carried for tax disclosure: these decide jurisdiction and whether
+            # the account is sheltered. Unrecognised values must stay
+            # unrecognised — see tax.classify_account.
+            "raw_type":         a.get("raw_type"),
+            "account_category": a.get("account_category"),
         })
     return out
 
@@ -275,15 +280,28 @@ def reconcile(raw_positions: list[dict], cash: float = 0.0,
                                 "reason": REASON_NOVALUE, "account": acct_name(aid)})
         else:
             supported.append({"symbol": symbol, "units": units,
-                              "value": value, "_account": aid})
+                              "value": value, "_account": aid,
+                              # Cost basis for tax disclosure. Already in the
+                              # payload — previously fetched and discarded.
+                              "price": price or (value / units if units else 0.0),
+                              "average_purchase_price": _num(pos.get("average_purchase_price")),
+                              "open_pnl": _num(pos.get("open_pnl")),
+                              "tax_lots": pos.get("tax_lots") or []})
 
     # Merge duplicates, keeping the per-account split rather than discarding it.
     merged: dict[str, dict] = {}
     for p in supported:
         m = merged.setdefault(p["symbol"], {"symbol": p["symbol"], "units": 0.0,
-                                            "value": 0.0, "_acct": {}})
+                                            "value": 0.0, "_acct": {}, "_lots": [],
+                                            "_basis": 0.0, "_price": 0.0})
         m["units"] += p["units"]
         m["value"] += p["value"]
+        m["_price"] = p["price"] or m["_price"]
+        # Lots carry their own account so a mixed-shelter holding can be
+        # reported as mixed rather than silently attributed to one treatment.
+        for lot in p["tax_lots"]:
+            m["_lots"].append({**lot, "_account": p["_account"]})
+        m["_basis"] += (p["average_purchase_price"] or 0.0) * p["units"]
         aid = p["_account"]
         a = m["_acct"].setdefault(aid, {"id": aid, "name": acct_name(aid),
                                         "units": 0.0, "value": 0.0})
@@ -293,6 +311,18 @@ def reconcile(raw_positions: list[dict], cash: float = 0.0,
     supported = sorted(merged.values(), key=lambda p: p["value"], reverse=True)
     for p in supported:
         total = p["value"] or 1.0
+        # Everything the tax module needs, in one place, so the client can hand
+        # it straight back to /optimize without reshaping it.
+        lots  = p.pop("_lots")
+        basis = p.pop("_basis")
+        price = p.pop("_price") or (p["value"] / p["units"] if p["units"] else 0.0)
+        p["tax"] = {
+            "price":    round(price, 6),
+            "units":    round(p["units"], 6),
+            "tax_lots": lots,
+            "average_purchase_price": round(basis / p["units"], 6) if p["units"] and basis else 0.0,
+            "accounts": sorted({str(a) for a in p["_acct"]}),
+        }
         p["accounts"] = sorted(
             ({"id": a["id"], "name": a["name"],
               "units": round(a["units"], 6), "value": round(a["value"], 2),

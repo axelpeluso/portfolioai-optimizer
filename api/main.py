@@ -45,9 +45,24 @@ app.add_middleware(
 )
 
 # ── REQUEST / RESPONSE MODELS ─────────────────────────────────
+class TaxContext(BaseModel):
+    """Optional broker-derived detail used for tax DISCLOSURE only.
+
+    Sent by the client after a brokerage import. Nothing here is persisted, and
+    omitting it simply means no tax panel is returned.
+    """
+    positions : dict = {}          # symbol -> {price, units, tax_lots, _account, …}
+    accounts  : dict = {}          # account id -> {raw_type, currency, …}
+    rates     : Optional[dict] = None   # the USER'S own rates; no defaults exist
+
+
 class OptimizeRequest(BaseModel):
     tickers          : list[str]
     current_holdings : Optional[dict[str, float]] = {}
+    # Opt-in optimizer modes. Both off => identical output to before they existed.
+    minimize_trading : Optional[str] = None      # 'light' | 'moderate' | 'strong'
+    tax_aware        : bool = False
+    tax_context      : Optional[TaxContext] = None
 
     model_config = {
         "json_schema_extra": {
@@ -358,14 +373,64 @@ def optimize(request: OptimizeRequest):
     # Clean tickers
     tickers = [t.upper().strip() for t in request.tickers]
 
+    if request.minimize_trading not in (None, "light", "moderate", "strong"):
+        raise HTTPException(status_code=400,
+                            detail="minimize_trading must be light, moderate or strong")
+
+    import tax as taxmod
+    ctx  = request.tax_context
+    mode = request.minimize_trading
+
+    # Tax-aware selling is a MODIFIER on the turnover penalty, never an
+    # independent trigger — and it needs the user's own rates, so without them
+    # it stays a no-op instead of guessing.
+    tax_weights = None
+    if request.tax_aware and ctx and ctx.rates:
+        tax_weights = taxmod.penalty_weights(ctx.positions, ctx.accounts, ctx.rates) or None
+        if tax_weights and not mode:
+            mode = "moderate"     # tax weighting is meaningless with no penalty
+
     try:
-        result = run_full_analysis(tickers, request.current_holdings)
-        return {
-            "success" : True,
-            "data"    : result
-        }
+        result = run_full_analysis(tickers, request.current_holdings,
+                                   turnover_penalty=mode, tax_weights=tax_weights)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    # Disclosure: always computed when we have the data, regardless of the modes.
+    if ctx:
+        try:
+            result["tax"] = _tax_disclosure(result, ctx, taxmod)
+        except Exception as e:                     # noqa: BLE001
+            logging.warning(f"tax disclosure failed (omitted): {type(e).__name__}")
+
+    result["modes"] = {"minimize_trading": mode, "tax_aware": bool(tax_weights)}
+    return {"success": True, "data": result}
+
+
+def _tax_disclosure(result: dict, ctx: "TaxContext", taxmod) -> dict:
+    """Per-position and portfolio-level tax facts. Never a bill unless rates given."""
+    positions, accounts = ctx.positions or {}, ctx.accounts or {}
+    summary = taxmod.portfolio_summary(result["rebalancing"], result["total_value"],
+                                       positions, accounts)
+    per_symbol = {}
+    for sym, row in result["rebalancing"].items():
+        pos  = positions.get(sym)
+        acct = accounts.get((pos or {}).get("_account")) or {}
+        cls  = taxmod.classify_account(acct)
+        entry = {"account": cls["label"],
+                 "sheltered": cls["sheltered"],
+                 "holding_period_matters": cls["holding_period_matters"],
+                 "profile": taxmod.asset_profile(sym, cls["jurisdiction"])}
+        if pos and row.get("trade_amount", 0) < 0 and cls["sheltered"] is False:
+            entry["sale"] = taxmod.sale_consequence(pos, -row["trade_amount"])
+        per_symbol[sym] = entry
+
+    est = None
+    if ctx.rates and summary.get("realized_gain") is not None:
+        est = taxmod.estimate_tax(summary.get("short_term") or 0.0,
+                                  summary.get("long_term") or summary["realized_gain"],
+                                  ctx.rates)
+    return {"summary": summary, "per_symbol": per_symbol, "estimate": est}
 
 
 @app.post("/explain")
