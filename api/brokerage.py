@@ -157,12 +157,24 @@ def list_positions(user_id: str, user_secret: str, account_id: str) -> list[dict
     res = client().account_information.get_all_account_positions(
         user_id=user_id, user_secret=user_secret, account_id=account_id
     )
-    out = []
-    for p in (_body(res) or []):
-        p = dict(p)
-        p["_account"] = account_id
-        out.append(p)
-    return out
+    return [dict(p, _account=account_id) for p in _rows(_body(res))]
+
+
+def _rows(payload) -> list[dict]:
+    """Positions out of the response, list-shaped or wrapped.
+
+    The live endpoint returns a dict: {"results": [...], "data_freshness": ...}.
+    Iterating that yields its keys — plain strings — so the previous code raised
+    AttributeError on the first position. Both shapes are accepted now.
+    """
+    if isinstance(payload, dict):
+        for key in ("results", "positions", "data"):
+            if isinstance(payload.get(key), list):
+                payload = payload[key]
+                break
+        else:
+            return []
+    return [p for p in (payload or []) if isinstance(p, dict)]
 
 
 def account_cash(user_id: str, user_secret: str, account_id: str) -> float:
@@ -190,13 +202,20 @@ def _num(v: Any) -> float:
 
 
 def _symbol_of(pos: dict) -> tuple[str | None, str | None]:
-    """Extract (symbol, type) from SnapTrade's nested symbol shapes.
+    """Extract (symbol, type) from SnapTrade's position shapes.
 
-    The payload nests differently across brokerages, hence the walk rather than
-    a fixed path: position.symbol may be the symbol object itself, or wrap
-    another under .symbol.
+    Verified against a live sandbox connection, which returns the ticker under
+    `instrument` — NOT under `symbol`:
+
+        {"instrument": {"kind": "stock", "symbol": "AAPL",
+                        "raw_symbol": "AAPL", ...},
+         "units": "5", "price": "180.5", "cost_basis": "175"}
+
+    Older/other shapes nest it under `symbol`, sometimes wrapping a second
+    symbol object. Both are handled: guessing one would have made every
+    position resolve to None and silently drop the whole import.
     """
-    sym = pos.get("symbol")
+    sym = pos.get("instrument") or pos.get("symbol")
     if isinstance(sym, dict):
         inner = sym.get("symbol")
         if isinstance(inner, dict):
@@ -205,9 +224,33 @@ def _symbol_of(pos: dict) -> tuple[str | None, str | None]:
         return (str(sym).upper() if sym else None), None
 
     raw = sym.get("symbol") or sym.get("raw_symbol") or sym.get("ticker")
-    kind = ((sym.get("type") or {}).get("code")
-            if isinstance(sym.get("type"), dict) else sym.get("type"))
+    # `kind` in the live payload ("stock", "crypto"); `type.code` elsewhere.
+    kind = sym.get("kind")
+    if not kind:
+        kind = ((sym.get("type") or {}).get("code")
+                if isinstance(sym.get("type"), dict) else sym.get("type"))
     return (str(raw).upper().strip() if raw else None), (kind or None)
+
+
+def _unit_cost(pos: dict, units: float) -> float:
+    """Per-unit cost basis, whatever the broker called it.
+
+    The live payload carries `cost_basis` rather than `average_purchase_price`.
+    Looking only for the latter meant reporting "cost basis not provided" while
+    the data was sitting there under another name — hiding gains we could
+    compute.
+    """
+    avg = _num(pos.get("average_purchase_price"))
+    if avg > 0:
+        return avg
+    cb = _num(pos.get("cost_basis"))
+    if cb <= 0 or units <= 0:
+        return 0.0
+    # `cost_basis` is per unit in the observed payload (AAPL: 175 against a
+    # price of 180.5 on 5 units — a 3% gain, versus 415% if it were the total
+    # for the whole position, which is not credible for an account whose first
+    # transaction is a month old).
+    return cb
 
 
 # Instrument types the price history cannot support.
@@ -288,7 +331,7 @@ def reconcile(raw_positions: list[dict], cash: float = 0.0,
                               # Cost basis for tax disclosure. Already in the
                               # payload — previously fetched and discarded.
                               "price": price or (value / units if units else 0.0),
-                              "average_purchase_price": _num(pos.get("average_purchase_price")),
+                              "average_purchase_price": _unit_cost(pos, units),
                               "open_pnl": _num(pos.get("open_pnl")),
                               "tax_lots": pos.get("tax_lots") or []})
 

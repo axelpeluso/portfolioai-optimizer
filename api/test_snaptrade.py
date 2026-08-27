@@ -135,6 +135,88 @@ def test_flat_symbol_shape_is_handled():
     assert out["supported"][0]["symbol"] == REAL
 
 
+# ── forma real del payload (capturada del sandbox) ────────────
+# Estos cuatro tests corresponden a bugs reales que ningun mock detecto: el
+# codigo asumia una lista de posiciones con el ticker bajo `symbol` y el costo
+# bajo `average_purchase_price`. Nada de eso era cierto.
+
+LIVE_PAYLOAD = {
+    "results": [
+        {"instrument": {"kind": "stock", "symbol": "AAPL", "raw_symbol": "AAPL",
+                        "description": "Apple Inc.", "currency": "USD"},
+         "units": "5", "price": "180.5", "cost_basis": "175", "currency": "USD"},
+        {"instrument": {"kind": "stock", "symbol": "MSFT", "raw_symbol": "MSFT"},
+         "units": "10", "price": "410", "cost_basis": "380"},
+        {"instrument": {"kind": "crypto", "symbol": "BTC", "raw_symbol": "BTC"},
+         "units": "0.25", "price": "59000", "cost_basis": "55000"},
+    ],
+    "data_freshness": {},
+}
+
+LIVE_ACCOUNTS = [
+    {"id": "acc1", "name": "Individual", "broker": "sandbox", "value": 25000.0,
+     "currency": "USD", "raw_type": "Individual", "account_category": "INVESTMENT"},
+    {"id": "acc2", "name": "IRA", "broker": "sandbox", "value": 12500.0,
+     "currency": "USD", "raw_type": "IRA", "account_category": "INVESTMENT"},
+]
+
+
+def live_positions(account="acc1"):
+    return [dict(p, _account=account) for p in st._rows(LIVE_PAYLOAD)]
+
+
+def test_response_is_a_dict_not_a_list():
+    """Iterar el dict devolvia sus claves (strings) y reventaba en .get()."""
+    rows = st._rows(LIVE_PAYLOAD)
+    assert len(rows) == 3
+    assert all(isinstance(r, dict) for r in rows)
+
+
+def test_ticker_lives_under_instrument_not_symbol():
+    """El bug mas silencioso: todo caia a None y no se importaba nada."""
+    rows = st._rows(LIVE_PAYLOAD)
+    assert [st._symbol_of(r)[0] for r in rows] == ["AAPL", "MSFT", "BTC"]
+    assert [st._symbol_of(r)[1] for r in rows] == ["stock", "stock", "crypto"]
+
+
+def test_cost_basis_is_read_when_average_purchase_price_is_absent():
+    """El dato estaba, con otro nombre; buscabamos solo el que no venia."""
+    out = st.reconcile(live_positions(), accounts=LIVE_ACCOUNTS)
+    aapl = next(p for p in out["supported"] if p["symbol"] == "AAPL")
+    assert aapl["tax"]["average_purchase_price"] == 175.0
+    assert aapl["value"] == 902.5
+
+
+def test_crypto_is_excluded_by_instrument_kind():
+    out = st.reconcile(live_positions(), accounts=LIVE_ACCOUNTS)
+    assert {p["symbol"] for p in out["supported"]} == {"AAPL", "MSFT"}
+    assert [(u["symbol"], u["reason"]) for u in out["unsupported"]] == \
+           [("BTC", st.REASON_KIND)]
+
+
+def test_live_shape_produces_a_usable_gain():
+    """De punta a punta: payload real -> reconcile -> consecuencia fiscal."""
+    import tax
+    out = st.reconcile(live_positions(), accounts=LIVE_ACCOUNTS)
+    aapl = next(p for p in out["supported"] if p["symbol"] == "AAPL")["tax"]
+    c = tax.sale_consequence({"price": aapl["price"], "units": aapl["units"],
+                              "average_purchase_price": aapl["average_purchase_price"]},
+                             451.25)
+    assert c["fidelity"] == "average"        # el sandbox no manda tax_lots
+    assert c["gain"] == 13.75                # 2.5 un * (180.5 - 175)
+    assert c["short_term"] is None           # sin lotes, sin reparto inventado
+
+
+def test_real_account_types_classify_correctly():
+    """raw_type 'Individual' e 'IRA' salieron de una conexion real."""
+    import tax
+    individual = tax.classify_account(LIVE_ACCOUNTS[0])
+    ira = tax.classify_account(LIVE_ACCOUNTS[1])
+    assert (individual["jurisdiction"], individual["sheltered"]) == (tax.US, False)
+    assert individual["holding_period_matters"] is True
+    assert (ira["jurisdiction"], ira["sheltered"]) == (tax.US, True)
+
+
 # ── multi-account ─────────────────────────────────────────────
 ACCTS = [acct("a1", "Margin", 30000.0), acct("a2", "RRSP", 20000.0)]
 
