@@ -21,9 +21,9 @@
 
 - **Five-model engine** — K-Means + Random Forest + MLP + Markowitz MPT + a rebalancing translator.
 - **Claude AI layer** — a one-click "Explain with Claude" analysis and a conversational assistant that can **add/remove tickers and re-optimize** on request.
-- **289-instrument universe** — stocks, sector/factor/bond/commodity ETFs, and crypto (BTC/ETH ETFs).
+- **288-instrument universe** — stocks, sector/factor/bond/commodity ETFs, and crypto (BTC/ETH ETFs).
 - **Scenario compare** — every run is snapshotted; flip between them or view a side-by-side delta table.
-- **Ticker autocomplete** — search 289 instruments by symbol *or* company name.
+- **Ticker autocomplete** — search 288 instruments by symbol *or* company name.
 - **Deployed** — backend on Railway, frontend on Vercel, waitlist + analytics on Supabase.
 
 > Actual Sharpe / volatility / risk figures depend on the tickers, holdings, and data window you run — the app reports them live per optimization.
@@ -65,7 +65,7 @@ PortfolioAI combines **unsupervised learning**, **supervised learning**, **deep 
         └──────────────┬───────────────┘
                        ▼
         ┌──────────────────────────────┐
-        │  api/prices.csv (289 tickers)│  ← bundled adjusted-close history
+        │  api/prices.csv (288 tickers)│  ← bundled adjusted-close history
         │  api/tickers.json (names)    │     (generated offline via yfinance)
         └──────────────────────────────┘
 ```
@@ -83,7 +83,7 @@ Final Project/
 │   ├── refresh_prices.py       ← rebuild prices.csv from Yahoo (see workflow)
 │   ├── test_api.py             ← pytest smoke tests for the core endpoints
 │   ├── test_snaptrade.py       ← reconciliation + auth-gate tests
-│   ├── prices.csv              ← bundled adjusted-close history (289 tickers)
+│   ├── prices.csv              ← bundled adjusted-close history (288 tickers)
 │   ├── tickers.json            ← symbol → company name map (for autocomplete)
 │   ├── requirements.txt        ← Python deps (deployment)
 │   ├── railway.json            ← Railway deploy config
@@ -176,7 +176,7 @@ Open `frontend/index.html` in your browser. By default it calls the **deployed R
 |-------:|------|-------------|
 | `GET`  | `/`          | Health banner + version |
 | `GET`  | `/health`    | Liveness probe |
-| `GET`  | `/tickers`   | The 289-instrument universe (symbol + company name) for the picker |
+| `GET`  | `/tickers`   | The 288-instrument universe (symbol + company name) for the picker |
 | `POST` | `/optimize`  | Run the full ML pipeline + return rebalancing |
 | `POST` | `/explain`   | **SSE** — Claude's plain-English analysis of a result |
 | `POST` | `/chat`      | **SSE** — conversational assistant (may emit re-optimize / ticker actions) |
@@ -185,7 +185,7 @@ Open `frontend/index.html` in your browser. By default it calls the **deployed R
 | `POST` | `/snaptrade/session`   | Start an ephemeral session, returns a bearer token |
 | `POST` | `/snaptrade/connect`   | URL of SnapTrade's hosted connection portal |
 | `GET`  | `/snaptrade/accounts`  | Connected brokerage accounts |
-| `GET`  | `/snaptrade/positions` | Positions reconciled against the 289-symbol universe |
+| `GET`  | `/snaptrade/positions` | Positions reconciled against the 288-symbol universe |
 | `DELETE` | `/snaptrade/session` | Disconnect and delete the SnapTrade user |
 | `POST` | `/track`     | Fire-and-forget analytics event (always 200) |
 | `GET`  | `/analytics` | Admin dashboard data (requires `X-Admin-Key`) |
@@ -243,7 +243,7 @@ model-generated BUY/SELL instructions into a live account would make this a
 different product with different obligations; it deliberately stops at "here is
 what the models suggest".
 
-Positions are reconciled server-side against the 289-symbol universe and the
+Positions are reconciled server-side against the 288-symbol universe and the
 15-ticker cap, and the review modal shows *every* position with a reason when it
 cannot be used — not in the universe, below the top 15 by value, or not
 modellable at all (cash, options). Silent truncation would mean optimizing
@@ -280,7 +280,7 @@ Both use **Claude Haiku 4.5** and stream over Server-Sent Events.
 | Markowitz / MPT | Optimization | SciPy (SLSQP) | Solve Max-Sharpe + Min-Variance |
 | Claude Haiku 4.5 | LLM | Anthropic API | Explain results + conversational re-optimization |
 
-**Universe:** 289 instruments (stocks · sector/factor/bond/commodity ETFs · crypto ETFs)
+**Universe:** 288 instruments (stocks · sector/factor/bond/commodity ETFs · crypto ETFs)
 **Window:** 2021-11-10 → latest row in `prices.csv` · **Risk-free rate:** 5%
 **Data:** bundled `api/prices.csv` (adjusted close, built offline via yfinance)
 

@@ -1876,7 +1876,19 @@ function esc(s) {
 // after the first optimization). Act 2 can't run earlier — #results is
 // display:none until render() fills it, so its targets have no geometry.
 
-const TOUR_KEY = 'tour_state';   // 'act1_done' | 'done'
+const TOUR_KEY  = 'tour_state';    // 'act1_done' | 'done'
+const TOUR_LIVE = 'tour_act1';     // sessionStorage — dies with the tab
+
+// 'act1_done' only means something while the user is still in the visit where
+// they saw act 1. Coming back days later and being ambushed by act 2 with no
+// memory of act 1 is worse than simply starting over, so a new browser session
+// resets the halfway state and the tour opens from the top.
+function tourReconcileState() {
+  if (localStorage.getItem(TOUR_KEY) === 'act1_done' &&
+      !sessionStorage.getItem(TOUR_LIVE)) {
+    localStorage.removeItem(TOUR_KEY);
+  }
+}
 
 const TOUR_ACT1 = [
   { title: 'Welcome to PortfolioAI',
@@ -1891,7 +1903,7 @@ const TOUR_ACT1 = [
   { el: '#inst-block', title: 'Your instruments',
     body: 'These chips are the assets the optimizer will consider. Start from the defaults or build your own set — <b>2 to 15</b> instruments.',
     hint: 'Click the ✕ on any chip to drop it.', place: 'right' },
-  { el: '.add-wrap', title: 'Add from 289 instruments',
+  { el: '.add-wrap', title: 'Add from 288 instruments',
     body: 'Search by ticker or company name — <code>AAPL</code> or <code>Apple</code> both work. The universe covers stocks, sector and factor ETFs, bonds, commodities and crypto ETFs.',
     place: 'right' },
   { el: '#tot', title: 'Portfolio value',
@@ -1975,6 +1987,7 @@ function tourGo(dir) {
   // The run-button step hands control back to the user mid-tour.
   if (dir > 0 && step && step.cta) {
     localStorage.setItem(TOUR_KEY, 'act1_done');
+    sessionStorage.setItem(TOUR_LIVE, '1');   // marks act 1 as done *this visit*
     endTour(false, true);
     document.getElementById('runbtn').focus();
     return;
@@ -2114,6 +2127,7 @@ renderChips();
 loadCatalog();
 bkInit();
 document.addEventListener('click', e => { if (!e.target.closest('.add-wrap')) acClose(); });
+tourReconcileState();
 // Wait for bkInit's status call so the brokerage tour step reflects reality —
 // tourPrep() drops steps whose target is hidden, and #bk-block starts hidden.
 if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => startTour(false), 1200);
