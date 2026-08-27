@@ -5,14 +5,19 @@
 #   /optimize, /explain, /chat, /tickers, /waitlist, /track, /analytics
 # ============================================================
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime, timedelta, timezone
 import os
 import re
 import json
+import time
+import uuid
+import hashlib
+import secrets
 import logging
 import uvicorn
 
@@ -25,10 +30,16 @@ app = FastAPI(
     version     = "1.0.0"
 )
 
-# Allow HTML frontend to call this API
+# Allow the HTML frontend to call this API.
+#
+# Defaults to "*" so existing deployments keep working. Set ALLOWED_ORIGINS to a
+# comma-separated list before enabling SnapTrade in production — see the note in
+# .env.example about what that does and does not protect against.
+_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+            if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins  = ["*"],
+    allow_origins  = _origins,
     allow_methods  = ["*"],
     allow_headers  = ["*"],
 )
@@ -175,6 +186,92 @@ def _supabase_client():
         )
     _supabase = create_client(url, key)
     return _supabase
+
+
+# ── SNAPTRADE: PRINCIPALS ─────────────────────────────────────
+# A "principal" owns a SnapTrade connection. Today every principal is an
+# ephemeral session (no login); Phase 2 adds kind='account' tied to a real user
+# without changing any of the routes below.
+
+SNAPTRADE_TABLE       = "snaptrade_principals"
+SESSION_TTL_HOURS     = 24
+_SESSION_RATE: dict[str, list[float]] = {}     # ip -> recent create timestamps
+_SESSION_RATE_MAX     = 10                     # per IP per hour
+
+
+def _fernet():
+    """Cipher for the SnapTrade userSecret.
+
+    Encrypted at application level rather than left in plaintext behind the
+    Supabase service_role key: that key is broad, and a leaked table dump must
+    not hand over access to anyone's brokerage account.
+    """
+    key = os.environ.get("SNAPTRADE_ENCRYPTION_KEY")
+    if not key:
+        raise HTTPException(
+            status_code=500,
+            detail="SNAPTRADE_ENCRYPTION_KEY not configured on the server."
+        )
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="cryptography not installed. Add it to requirements.txt."
+        )
+    return Fernet(key.encode() if isinstance(key, str) else key)
+
+
+def _hash_token(token: str) -> str:
+    """Only the hash is stored — the token itself lives in the browser alone."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _rate_limited(ip: str) -> bool:
+    now = time.time()
+    hits = [t for t in _SESSION_RATE.get(ip, []) if now - t < 3600]
+    _SESSION_RATE[ip] = hits
+    if len(hits) >= _SESSION_RATE_MAX:
+        return True
+    hits.append(now)
+    return False
+
+
+def _principal(authorization: Optional[str] = Header(None)) -> dict:
+    """Resolve `Authorization: Bearer <token>` to a live principal.
+
+    Guards every SnapTrade route except session creation. Expired sessions are
+    rejected here even if cleanup has not yet deleted them.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token.")
+    token = authorization.split(None, 1)[1].strip()
+
+    client = _supabase_client()
+    rows = (client.table(SNAPTRADE_TABLE)
+            .select("*").eq("token_hash", _hash_token(token))
+            .limit(1).execute().data or [])
+    if not rows:
+        raise HTTPException(status_code=401, detail="Invalid or expired session.")
+
+    row = rows[0]
+    exp = row.get("expires_at")
+    if exp:
+        expires = datetime.fromisoformat(str(exp).replace("Z", "+00:00"))
+        if expires <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="Session expired.")
+
+    row["_secret"] = _fernet().decrypt(row["st_user_secret"].encode()).decode()
+    return row
+
+
+def _st_error(e: Exception) -> HTTPException:
+    """Map a SnapTrade failure to an HTTP error without leaking credentials."""
+    import brokerage as st
+    if isinstance(e, st.SnapTradeNotConfigured):
+        return HTTPException(status_code=503, detail=str(e))
+    logging.warning(f"SnapTrade call failed: {type(e).__name__}")
+    return HTTPException(status_code=502, detail="Brokerage connection failed.")
 
 
 CONTROL_MARKERS = ("[REOPTIMIZE]", "[ACTION]")
@@ -417,6 +514,125 @@ def analytics(x_admin_key: Optional[str] = Header(None)):
         "signups_per_day": dict(sorted(signups_per_day.items())),
         "total_events"   : len(events),
     }
+
+
+# ── SNAPTRADE: READ-ONLY BROKERAGE IMPORT ─────────────────────
+# Connect a brokerage, read positions, hand them to the sidebar. No trading:
+# the app stays a research tool, and nothing here can place an order.
+
+class ConnectRequest(BaseModel):
+    redirect_uri: Optional[str] = None
+
+
+@app.get("/snaptrade/status")
+def snaptrade_status():
+    """Whether brokerage import is available, so the UI can hide the button."""
+    import brokerage as st
+    return {"enabled": st.is_configured(), "max_tickers": st.MAX_TICKERS}
+
+
+@app.post("/snaptrade/session")
+def snaptrade_session(request: Request):
+    """Create an ephemeral principal and register it with SnapTrade.
+
+    Returns a bearer token the browser keeps for the session. Only the token's
+    hash is stored here; the SnapTrade userSecret is encrypted at rest.
+    """
+    import brokerage as st
+
+    ip = (request.client.host if request.client else "unknown")
+    if _rate_limited(ip):
+        raise HTTPException(status_code=429,
+                            detail="Too many sessions from this address.")
+
+    st_user_id = f"pai_{uuid.uuid4().hex}"
+    try:
+        user_secret = st.register_user(st_user_id)
+    except Exception as e:                      # noqa: BLE001
+        raise _st_error(e)
+
+    token   = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
+
+    try:
+        _supabase_client().table(SNAPTRADE_TABLE).insert({
+            "kind":           "session",
+            "token_hash":     _hash_token(token),
+            "st_user_id":     st_user_id,
+            "st_user_secret": _fernet().encrypt(user_secret.encode()).decode(),
+            "expires_at":     expires.isoformat(),
+        }).execute()
+    except Exception:
+        # Never strand a registered SnapTrade user we cannot reach again —
+        # those are billed per connection.
+        try:
+            st.delete_user(st_user_id)
+        except Exception:                       # noqa: BLE001
+            logging.warning(f"orphaned SnapTrade user {st_user_id}")
+        raise HTTPException(status_code=500, detail="Could not start session.")
+
+    return {"token": token, "expires_at": expires.isoformat()}
+
+
+@app.post("/snaptrade/connect")
+def snaptrade_connect(body: ConnectRequest, principal: dict = Depends(_principal)):
+    """URL of SnapTrade's hosted portal, where the user links their brokerage."""
+    import brokerage as st
+    try:
+        url = st.login_url(principal["st_user_id"], principal["_secret"],
+                           body.redirect_uri)
+    except Exception as e:                      # noqa: BLE001
+        raise _st_error(e)
+    return {"url": url}
+
+
+@app.get("/snaptrade/accounts")
+def snaptrade_accounts(principal: dict = Depends(_principal)):
+    import brokerage as st
+    try:
+        return {"accounts": st.list_accounts(principal["st_user_id"],
+                                             principal["_secret"])}
+    except Exception as e:                      # noqa: BLE001
+        raise _st_error(e)
+
+
+@app.get("/snaptrade/positions")
+def snaptrade_positions(principal: dict = Depends(_principal)):
+    """Positions across every connected account, reconciled against the universe.
+
+    Nothing is persisted — positions are fetched, reconciled, returned and
+    discarded, which keeps personal financial data out of our storage entirely.
+    """
+    import brokerage as st
+    uid, secret = principal["st_user_id"], principal["_secret"]
+    try:
+        accounts = st.list_accounts(uid, secret)
+        raw, cash = [], 0.0
+        for acct in accounts:
+            raw += st.list_positions(uid, secret, acct["id"])
+            cash += st.account_cash(uid, secret, acct["id"])
+    except Exception as e:                      # noqa: BLE001
+        raise _st_error(e)
+
+    result = st.reconcile(raw, cash)
+    result["accounts"] = accounts
+    return result
+
+
+@app.delete("/snaptrade/session")
+def snaptrade_disconnect(principal: dict = Depends(_principal)):
+    """Drop the brokerage connection and the principal row.
+
+    Deletes the SnapTrade user too, not just our row — connections are billed
+    per user, so an orphan keeps costing after the session is gone.
+    """
+    import brokerage as st
+    try:
+        st.delete_user(principal["st_user_id"])
+    except Exception:                           # noqa: BLE001
+        logging.warning(f"could not delete SnapTrade user {principal['st_user_id']}")
+    _supabase_client().table(SNAPTRADE_TABLE).delete().eq("id", principal["id"]).execute()
+    return {"success": True}
 
 
 # ── RUN ───────────────────────────────────────────────────────

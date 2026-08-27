@@ -11,7 +11,7 @@
 ![Chart.js](https://img.shields.io/badge/Chart.js-4.x-FF6384?logo=chartdotjs&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-**🔗 Live demo:** https://portfolioai-optimizer.vercel.app
+**🔗 Landing page:** https://portfolioai-optimizer.vercel.app · **the tool itself** lives at `/app` (unlisted — access is granted after a demo)
 
 > ⚠️ **Testing Beta — not investment advice.** For research and educational purposes only.
 
@@ -21,9 +21,9 @@
 
 - **Five-model engine** — K-Means + Random Forest + MLP + Markowitz MPT + a rebalancing translator.
 - **Claude AI layer** — a one-click "Explain with Claude" analysis and a conversational assistant that can **add/remove tickers and re-optimize** on request.
-- **289-instrument universe** — stocks, sector/factor/bond/commodity ETFs, and crypto (BTC/ETH ETFs).
+- **288-instrument universe** — stocks, sector/factor/bond/commodity ETFs, and crypto (BTC/ETH ETFs).
 - **Scenario compare** — every run is snapshotted; flip between them or view a side-by-side delta table.
-- **Ticker autocomplete** — search 289 instruments by symbol *or* company name.
+- **Ticker autocomplete** — search 288 instruments by symbol *or* company name.
 - **Deployed** — backend on Railway, frontend on Vercel, waitlist + analytics on Supabase.
 
 > Actual Sharpe / volatility / risk figures depend on the tickers, holdings, and data window you run — the app reports them live per optimization.
@@ -34,7 +34,7 @@
 
 PortfolioAI combines **unsupervised learning**, **supervised learning**, **deep learning**, **classical financial theory**, and a **large language model** into a single rebalancing experience:
 
-1. **K-Means Clustering** profiles each asset as `🚀 Growth` / `⚖️ Moderate` / `🛡️ Defensive` from return / volatility / Sharpe.
+1. **K-Means Clustering** profiles each asset as `Growth` / `Moderate` / `Defensive` from return / volatility / Sharpe.
 2. **Random Forest Regressor** (per-ticker) predicts the next-quarter return from a rolling-window feature set.
 3. **MLP Neural Network** evaluates the *current* portfolio's market regime and emits a 0–1 **risk score** (sigmoid-squashed so it never hard-pins to 1.0).
 4. **Modern Portfolio Theory** (Markowitz, SLSQP-solved) finds the Max-Sharpe and Min-Variance weights — with bounds that adapt to the MLP's risk score, and Ledoit-Wolf covariance shrinkage.
@@ -65,7 +65,7 @@ PortfolioAI combines **unsupervised learning**, **supervised learning**, **deep 
         └──────────────┬───────────────┘
                        ▼
         ┌──────────────────────────────┐
-        │  api/prices.csv (289 tickers)│  ← bundled adjusted-close history
+        │  api/prices.csv (288 tickers)│  ← bundled adjusted-close history
         │  api/tickers.json (names)    │     (generated offline via yfinance)
         └──────────────────────────────┘
 ```
@@ -79,21 +79,28 @@ Final Project/
 ├── api/
 │   ├── main.py                 ← FastAPI app + routes (optimize, explain, chat, waitlist, …)
 │   ├── optimizer.py            ← ML + MPT pipeline
+│   ├── brokerage.py            ← SnapTrade wrapper + position reconciliation
+│   ├── refresh_prices.py       ← rebuild prices.csv from Yahoo (see workflow)
 │   ├── test_api.py             ← pytest smoke tests for the core endpoints
-│   ├── prices.csv              ← bundled adjusted-close history (289 tickers)
+│   ├── test_snaptrade.py       ← reconciliation + auth-gate tests
+│   ├── prices.csv              ← bundled adjusted-close history (288 tickers)
 │   ├── tickers.json            ← symbol → company name map (for autocomplete)
 │   ├── requirements.txt        ← Python deps (deployment)
 │   ├── railway.json            ← Railway deploy config
 │   ├── Procfile / runtime.txt  ← process + Python version
 ├── frontend/
+│   ├── landing.html            ← public landing page (demo request form)
 │   └── index.html              ← TradingView-style UI (Chart.js, floating Claude chat)
 ├── notebook/
 │   └── portfolio_optimizer.ipynb   ← full ML walk-through
 ├── docs/
+│   ├── snaptrade-setup.md      ← brokerage import: credentials, table, cleanup
 │   └── dormant-support-flow.md ← parked in-app support (Supabase + email) design
-├── .github/workflows/ci.yml    ← GitHub Actions (pytest on push / PR)
+├── .github/workflows/
+│   ├── ci.yml                  ← GitHub Actions (pytest on push / PR)
+│   └── refresh-prices.yml      ← weekly price refresh → commits prices.csv
 ├── requirements-notebook.txt   ← notebook-only extras (matplotlib, yfinance)
-├── vercel.json                 ← rewrites / → frontend/index.html
+├── vercel.json                 ← routes / → landing.html, /app → index.html
 ├── .env.example                ← required env var names (no secrets)
 ├── .gitignore
 └── README.md
@@ -132,6 +139,9 @@ cp .env.example .env
 | `SUPABASE_URL` | `/waitlist`, `/track`, `/analytics` | Supabase project URL |
 | `SUPABASE_KEY` | `/waitlist`, `/track`, `/analytics` | **service_role** key |
 | `ADMIN_KEY` | `/analytics` | secret; sent as the `X-Admin-Key` header |
+| `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY` | `/snaptrade/*` | brokerage import; unset = feature hidden |
+| `SNAPTRADE_ENCRYPTION_KEY` | `/snaptrade/*` | Fernet key encrypting each stored `userSecret` |
+| `ALLOWED_ORIGINS` | CORS | comma-separated allowlist; defaults to `*` |
 | `RESEND_API_KEY`, `SUPPORT_EMAIL_TO`, `SUPPORT_EMAIL_FROM` | (dormant support flow) | see [`docs/dormant-support-flow.md`](docs/dormant-support-flow.md) |
 
 The core `/optimize` pipeline needs **no** secrets — the AI, waitlist, and analytics features degrade gracefully (clear 500 / no-op) when their keys are unset. In production these are set in the Railway service's **Variables** tab.
@@ -166,11 +176,17 @@ Open `frontend/index.html` in your browser. By default it calls the **deployed R
 |-------:|------|-------------|
 | `GET`  | `/`          | Health banner + version |
 | `GET`  | `/health`    | Liveness probe |
-| `GET`  | `/tickers`   | The 289-instrument universe (symbol + company name) for the picker |
+| `GET`  | `/tickers`   | The 288-instrument universe (symbol + company name) for the picker |
 | `POST` | `/optimize`  | Run the full ML pipeline + return rebalancing |
 | `POST` | `/explain`   | **SSE** — Claude's plain-English analysis of a result |
 | `POST` | `/chat`      | **SSE** — conversational assistant (may emit re-optimize / ticker actions) |
 | `POST` | `/waitlist`  | Add an email to the Supabase waitlist |
+| `GET`  | `/snaptrade/status`    | Whether brokerage import is configured |
+| `POST` | `/snaptrade/session`   | Start an ephemeral session, returns a bearer token |
+| `POST` | `/snaptrade/connect`   | URL of SnapTrade's hosted connection portal |
+| `GET`  | `/snaptrade/accounts`  | Connected brokerage accounts |
+| `GET`  | `/snaptrade/positions` | Positions reconciled against the 288-symbol universe |
+| `DELETE` | `/snaptrade/session` | Disconnect and delete the SnapTrade user |
 | `POST` | `/track`     | Fire-and-forget analytics event (always 200) |
 | `GET`  | `/analytics` | Admin dashboard data (requires `X-Admin-Key`) |
 
@@ -194,13 +210,13 @@ Constraints: 2 ≤ `len(tickers)` ≤ 15. `current_holdings` optional (defaults 
     "tickers": ["AAPL", "..."],
     "risk_score": 0.88,
     "risk_level": "HIGH",
-    "cluster_map": { "AAPL": "🚀 Growth" },
+    "cluster_map": { "AAPL": "Growth" },
     "expected_returns": { "AAPL": 0.18 },
     "rebalancing": {
       "AAPL": {
         "current_value": 5000, "current_weight": 0.45, "optimal_weight": 0.30,
         "target_value": 3300.00, "trade_amount": -1700.00,
-        "action": "SELL", "rf_signal": "Bullish", "cluster": "🚀 Growth"
+        "action": "SELL", "rf_signal": "Bullish", "cluster": "Growth"
       }
     },
     "total_value": 11500,
@@ -214,6 +230,34 @@ Constraints: 2 ≤ `len(tickers)` ≤ 15. `current_holdings` optional (defaults 
   }
 }
 ```
+
+---
+
+## 🔗 Brokerage import (SnapTrade)
+
+Rather than typing every position, users can connect a brokerage and have the
+sidebar fill itself — tickers, dollar holdings and total value.
+
+**Read-only by design.** Nothing in the integration can place a trade. Routing
+model-generated BUY/SELL instructions into a live account would make this a
+different product with different obligations; it deliberately stops at "here is
+what the models suggest".
+
+Positions are reconciled server-side against the 288-symbol universe and the
+15-ticker cap, and the review modal shows *every* position with a reason when it
+cannot be used — not in the universe, below the top 15 by value, or not
+modellable at all (cash, options). Silent truncation would mean optimizing
+against a portfolio that isn't the user's.
+
+Positions are never stored: fetched, reconciled, returned, discarded. Only an
+encrypted SnapTrade `userSecret` and a token hash are persisted.
+
+The feature is **off unless configured** — with the env vars unset the button is
+hidden and the app behaves exactly as before. Setup (credentials, Supabase table,
+expiry cleanup): [`docs/snaptrade-setup.md`](docs/snaptrade-setup.md).
+
+> ⏱️ Every imported portfolio is a unique ticker set, so it always misses the
+> model cache — expect ~40s for a 15-ticker run.
 
 ---
 
@@ -236,8 +280,8 @@ Both use **Claude Haiku 4.5** and stream over Server-Sent Events.
 | Markowitz / MPT | Optimization | SciPy (SLSQP) | Solve Max-Sharpe + Min-Variance |
 | Claude Haiku 4.5 | LLM | Anthropic API | Explain results + conversational re-optimization |
 
-**Universe:** 289 instruments (stocks · sector/factor/bond/commodity ETFs · crypto ETFs)
-**Window:** 2021-11-10 → 2026-07-02 · **Risk-free rate:** 5%
+**Universe:** 288 instruments (stocks · sector/factor/bond/commodity ETFs · crypto ETFs)
+**Window:** 2021-11-10 → latest row in `prices.csv` · **Risk-free rate:** 5%
 **Data:** bundled `api/prices.csv` (adjusted close, built offline via yfinance)
 
 ---
@@ -245,7 +289,7 @@ Both use **Claude Haiku 4.5** and stream over Server-Sent Events.
 ## ☁️ Deployment
 
 - **Backend** → **Railway** (root directory `api/`, start `uvicorn main:app --host 0.0.0.0 --port $PORT`, healthcheck `/health`). Auto-deploys from `main`.
-- **Frontend** → **Vercel** (`vercel.json` rewrites `/` → `frontend/index.html`). Auto-deploys from `main`.
+- **Frontend** → **Vercel** (`vercel.json` routes `/` → `frontend/landing.html` and `/app` → `frontend/index.html`). Auto-deploys from `main`.
 - Set all secrets in the Railway **Variables** tab — see `.env.example` for the list.
 
 ---

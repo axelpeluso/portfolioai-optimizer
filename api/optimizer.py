@@ -22,8 +22,22 @@ CACHE_DIR = Path(__file__).parent / ".model_cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
 
+def _data_version() -> str:
+    """Fingerprint of the bundled price file (size + mtime).
+
+    Folded into the cache key so a refreshed prices.csv invalidates every
+    cached RF/MLP result — otherwise new data would silently serve old
+    predictions for any ticker set that had been optimized before.
+    """
+    try:
+        st = os.stat(CSV_PATH)
+        return f"{st.st_size}-{int(st.st_mtime)}"
+    except OSError:
+        return "nofile"
+
+
 def _cache_key(tickers: list) -> str:
-    key = "_".join(sorted(tickers))
+    key = "_".join(sorted(tickers)) + "|" + _data_version()
     return hashlib.md5(key.encode()).hexdigest()[:10]
 
 
@@ -52,15 +66,16 @@ warnings.filterwarnings('ignore', category=UserWarning)  # solo sklearn verbosit
 
 # ── CONSTANTS ────────────────────────────────────────────────
 START_DATE = "2021-11-10"
-END_DATE   = "2026-07-02"
+END_DATE   = None          # None → run to whatever the CSV ends at, so a
+                           # refreshed prices.csv is picked up automatically
 RISK_FREE  = 0.05
+
+CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prices.csv")
 
 
 # ── 1. DATA ──────────────────────────────────────────────────
 def fetch_data(tickers: list) -> tuple:
     """Load price data from bundled CSV and compute daily returns."""
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    CSV_PATH = os.path.join(BASE_DIR, "prices.csv")
     df = pd.read_csv(CSV_PATH, index_col=0, parse_dates=True)
     available = [t for t in tickers if t in df.columns]
     missing = [t for t in tickers if t not in df.columns]
@@ -115,12 +130,12 @@ def run_kmeans(features: pd.DataFrame) -> pd.DataFrame:
     n_clusters = min(3, n_stocks)
 
     if n_stocks < 2:
-        features['cluster_label'] = '🚀 Growth'
+        features['cluster_label'] = 'Growth'
         return features
 
     # StandardScaler needs variance — add tiny noise if all identical
     if data.std().max() == 0:
-        features['cluster_label'] = '🚀 Growth'
+        features['cluster_label'] = 'Growth'
         return features
 
     scaler = StandardScaler()
@@ -137,11 +152,11 @@ def run_kmeans(features: pd.DataFrame) -> pd.DataFrame:
         avg_vol = grp['annual_volatility'].mean()
         avg_ret = grp['annual_return'].mean()
         if avg_vol < 0.10:
-            label_map[c] = '🛡️ Defensive'
+            label_map[c] = 'Defensive'
         elif avg_ret >= median_ret:
-            label_map[c] = '🚀 Growth'
+            label_map[c] = 'Growth'
         else:
-            label_map[c] = '⚖️ Moderate'
+            label_map[c] = 'Moderate'
 
     features['cluster_label'] = features['cluster'].map(label_map)
     return features
@@ -312,7 +327,7 @@ def run_optimizer(tickers, expected_returns, cov_matrix,
     n         = len(tickers)
     max_w     = 0.40 if risk_score < 0.35 else (0.30 if risk_score < 0.65 else 0.20)
     min_def   = 0.10 if risk_score > 0.50 else 0.02
-    defensive = [t for t in tickers if '🛡️' in cluster_map.get(t, '')]
+    defensive = [t for t in tickers if 'Defensive' in cluster_map.get(t, '')]
 
     bounds      = [(min_def if t in defensive else 0.02, max_w) for t in tickers]
     constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]

@@ -1,0 +1,81 @@
+name: Refresh prices
+
+# Rebuilds api/prices.csv from Yahoo Finance and commits it. Railway
+# auto-deploys from main, so a successful commit here ships the new data.
+#
+# Weekly rather than daily on purpose: the models train on ~5 years of history,
+# so a few days makes no material difference to the output, while every commit
+# adds a fresh ~2.6 MB blob to the repo forever.
+
+on:
+  schedule:
+    - cron: "0 7 * * 6"        # Saturdays 07:00 UTC — after Friday's US close
+  workflow_dispatch:            # and on demand from the Actions tab
+    inputs:
+      full:
+        description: "Ignore the existing CSV and rebuild from scratch"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-prices
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.txt pytest httpx yfinance==0.2.59
+
+      - name: Refresh prices
+        id: refresh
+        working-directory: api
+        run: |
+          set +e
+          python refresh_prices.py ${{ inputs.full && '--full' || '' }}
+          code=$?
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          case $code in
+            0) echo "Updated." ;;
+            2) echo "Already current — nothing to commit." ;;
+            *) echo "::error::refresh_prices.py failed validation (exit $code); prices.csv untouched"
+               exit $code ;;
+          esac
+
+      # The refreshed CSV is the API's only data source, so prove the pipeline
+      # still runs against it *before* the commit goes anywhere near main.
+      - name: Smoke-test the pipeline against the new data
+        if: steps.refresh.outputs.code == '0'
+        working-directory: api
+        run: pytest -q
+
+      - name: Commit
+        if: steps.refresh.outputs.code == '0'
+        run: |
+          if git diff --quiet -- api/prices.csv; then
+            echo "No net change to prices.csv."
+            exit 0
+          fi
+          last=$(python -c "import pandas as pd; print(pd.read_csv('api/prices.csv', index_col=0).index[-1])")
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api/prices.csv
+          git commit -m "data: refresh prices through ${last}"
+          git push

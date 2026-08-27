@@ -277,7 +277,7 @@ main::-webkit-scrollbar-thumb{background:var(--s4);border-radius:2px}
 /* ─── RISK PANEL ─── */
 .risk-body{display:flex;align-items:flex-start;gap:28px;padding:20px 22px}
 .risk-score-col{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:110px}
-.risk-num{font-family:var(--serif);font-size:42px;font-weight:400;line-height:1;letter-spacing:-1px}
+.risk-num{font-family:var(--mono);font-size:42px;font-weight:400;line-height:1;letter-spacing:-.5px}
 .risk-label-badge{
   display:inline-flex;align-items:center;gap:5px;
   padding:4px 10px;border-radius:20px;
@@ -341,11 +341,15 @@ tbody td:nth-child(2){text-align:left}
 
 .sym{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--t1)}
 .clust{
-  display:inline-flex;align-items:center;gap:4px;
+  display:inline-flex;align-items:center;gap:6px;
   padding:3px 9px;border-radius:5px;
   font-size:11px;color:var(--t2);
   background:var(--s3);border:1px solid var(--line2);
 }
+.cdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.cd-growth{background:var(--g)}
+.cd-mod{background:var(--blue)}
+.cd-def{background:var(--t2)}
 .sig-bull{font-size:12px;color:var(--g)}
 .sig-bear{font-size:12px;color:var(--red)}
 .sig-neu{font-size:12px;color:var(--t2)}
@@ -414,6 +418,109 @@ tbody td:nth-child(2){text-align:left}
 .chat-input:focus{border-color:#3dd68c}
 .chat-send{padding:9px 16px;border-radius:8px;border:1px solid #3dd68c;background:rgba(61,214,140,.1);color:#3dd68c;font-size:13px;font-family:var(--mono);cursor:pointer}
 .chat-send:disabled{opacity:.5;cursor:default}
+
+/* ─── BROKERAGE ─── */
+.bk-connect{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:9px 12px;border-radius:8px;
+  background:var(--gb2);border:1px solid rgba(61,214,140,.28);color:var(--g);
+  font-family:var(--sans);font-size:12.5px;font-weight:500;cursor:pointer;
+  transition:all .15s;
+}
+.bk-connect:hover{background:var(--gb);border-color:var(--g)}
+.bk-connect:disabled{opacity:.55;cursor:default}
+.bk-linked-row{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:7px;background:var(--s3);border:1px solid var(--line2)}
+.bk-dot{width:6px;height:6px;border-radius:50%;background:var(--g);flex-shrink:0}
+.bk-linked-text{font-size:11.5px;color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-x{background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0 2px;line-height:1}
+.bk-x:hover{color:var(--red)}
+.bk-refresh{width:100%;margin-top:6px;padding:6px;border-radius:6px;background:none;border:1px solid var(--line);color:var(--t3);font-family:var(--sans);font-size:11.5px;cursor:pointer;transition:all .15s}
+.bk-refresh:hover{border-color:var(--line2);color:var(--t2)}
+.bk-note{margin-top:7px;font-size:10.5px;color:var(--t3);line-height:1.5}
+.bk-note.err{color:var(--red)}
+
+.bk-modal{
+  position:relative;width:min(540px,100%);max-height:88vh;overflow-y:auto;
+  background:#12151c;border:1px solid rgba(255,255,255,.1);border-radius:16px;
+  padding:26px 24px 22px;box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+.bk-notes{margin-bottom:14px;display:flex;flex-direction:column;gap:6px}
+.bk-note-item{
+  font-size:11.5px;color:var(--amb);line-height:1.5;
+  background:var(--abb);border:1px solid rgba(245,166,35,.2);
+  border-radius:6px;padding:7px 10px;
+}
+.bk-list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.bk-list-head span{font-family:var(--mono);font-size:11px;color:var(--t2)}
+.bk-list-head span.over{color:var(--red)}
+.bk-selbtn{background:none;border:none;color:var(--g);font-family:var(--sans);font-size:11.5px;cursor:pointer;padding:0}
+.bk-selbtn:hover{text-decoration:underline}
+.bk-list{border:1px solid var(--line);border-radius:9px;overflow:hidden;max-height:290px;overflow-y:auto}
+.bk-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+.bk-row:last-child{border-bottom:none}
+.bk-row:hover{background:var(--s2)}
+.bk-row input{accent-color:var(--g);cursor:pointer;flex-shrink:0;width:14px;height:14px}
+.bk-sym{font-family:var(--mono);font-size:12px;color:var(--t1);min-width:62px}
+.bk-units{font-family:var(--mono);font-size:11px;color:var(--t3);flex:1}
+.bk-val{font-family:var(--mono);font-size:12px;color:var(--t1)}
+.bk-excluded{margin-top:14px;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--s2)}
+.bk-excluded-head{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--t3);margin-bottom:8px}
+.bk-ex-row{display:flex;align-items:baseline;gap:9px;font-size:11.5px;color:var(--t3);padding:3px 0}
+.bk-ex-sym{font-family:var(--mono);color:var(--t2);min-width:62px}
+.bk-ex-reason{flex:1;font-size:11px}
+.bk-fine{margin-top:12px;font-size:10.5px;color:var(--t3);text-align:center;line-height:1.5}
+
+/* ─── GUIDED TOUR ─── */
+.tour-block{position:fixed;background:rgba(6,8,12,.66);z-index:3000;display:none}
+.tour-ring{
+  position:fixed;z-index:3001;pointer-events:none;display:none;
+  border:1.5px solid var(--g);border-radius:9px;
+  box-shadow:0 0 0 3px rgba(61,214,140,.16),0 0 22px rgba(61,214,140,.22);
+  /* No geometry transition: the ring is re-measured every frame while the page
+     scrolls, so an animated one would permanently trail its target. */
+}
+.tour-pop{
+  position:fixed;z-index:3002;display:none;width:min(330px,calc(100vw - 28px));
+  background:var(--s1);border:1px solid var(--line2);border-radius:12px;
+  padding:18px 18px 15px;box-shadow:0 18px 50px rgba(0,0,0,.6);
+  animation:tourIn .22s ease;
+}
+@keyframes tourIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.tour-step{font-family:var(--mono);font-size:10px;letter-spacing:1.2px;color:var(--g);margin-bottom:9px}
+.tour-title{font-size:15px;font-weight:600;color:var(--t1);margin-bottom:7px;line-height:1.35}
+.tour-body{font-size:13px;color:var(--t2);line-height:1.65}
+.tour-body b{color:var(--t1);font-weight:500}
+.tour-body code{font-family:var(--mono);font-size:12px;color:var(--g)}
+.tour-hint{
+  margin-top:11px;padding:8px 11px;border-radius:7px;
+  background:var(--gb2);border:1px solid rgba(61,214,140,.18);
+  font-size:12px;color:var(--g);line-height:1.5;
+}
+.tour-foot{display:flex;align-items:center;gap:8px;margin-top:16px}
+.tour-skip{background:none;border:none;color:var(--t3);font-family:var(--sans);font-size:12px;cursor:pointer;padding:4px 0}
+.tour-skip:hover{color:var(--t2)}
+.tour-nav{margin-left:auto;display:flex;gap:7px}
+.tour-btn{
+  padding:7px 15px;border-radius:7px;font-family:var(--sans);font-size:12.5px;
+  font-weight:500;cursor:pointer;border:1px solid var(--line2);
+  background:var(--s3);color:var(--t2);transition:all .15s;
+}
+.tour-btn:hover{border-color:var(--line2);color:var(--t1);background:var(--s4)}
+.tour-btn.primary{background:var(--g);border-color:var(--g);color:#0d0f14;font-weight:600}
+.tour-btn.primary:hover{background:var(--g2);border-color:var(--g2)}
+.tour-dots{display:flex;gap:4px;align-items:center}
+.tour-dot{width:5px;height:5px;border-radius:50%;background:var(--s4);transition:background .2s,width .2s}
+.tour-dot.on{background:var(--g);width:14px;border-radius:3px}
+.tour-help{
+  width:26px;height:26px;border-radius:50%;padding:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid var(--line2);color:var(--t3);
+  font-family:var(--mono);font-size:12px;cursor:pointer;transition:all .15s;
+}
+.tour-help:hover{border-color:var(--g);color:var(--g)}
+@media (prefers-reduced-motion:reduce){
+  .tour-pop{animation:none}
+}
 </style>
 </head>
 <body>
@@ -444,6 +551,7 @@ tbody td:nth-child(2){text-align:left}
   <div class="meta-tag" style="margin-left:4px">Nov 2021 – July 2026</div>
   <div class="meta-tag" style="margin-left:6px">K-Means · RF · MLP · MPT · Claude AI</div>
   <div class="nav-right">
+    <button class="tour-help" onclick="startTour(true)" title="Replay the guided tour" aria-label="Replay the guided tour">?</button>
     <div class="pill pill-beta"><span class="beta-dot"></span>Beta</div>
     <button class="pill pill-solid" onclick="openWaitlist()">Join Waitlist</button>
   </div>
@@ -457,8 +565,26 @@ tbody td:nth-child(2){text-align:left}
   <aside>
     <div class="aside-scroll">
 
+      <!-- BROKERAGE (hidden unless the API reports the feature enabled) -->
+      <div class="aside-block" id="bk-block" style="display:none">
+        <div class="aside-label">Brokerage</div>
+        <button class="bk-connect" id="bk-connect" onclick="bkConnect()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5L9.5 6.5M7 4.5l1-1a2.5 2.5 0 013.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 014.5 9l1-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Connect brokerage
+        </button>
+        <div class="bk-linked" id="bk-linked" style="display:none">
+          <div class="bk-linked-row">
+            <span class="bk-dot"></span>
+            <span class="bk-linked-text" id="bk-linked-text">Connected</span>
+            <button class="bk-x" onclick="bkDisconnect()" title="Disconnect">✕</button>
+          </div>
+          <button class="bk-refresh" onclick="bkLoadPositions()">Re-import holdings</button>
+        </div>
+        <div class="bk-note" id="bk-note"></div>
+      </div>
+
       <!-- TICKERS -->
-      <div class="aside-block">
+      <div class="aside-block" id="inst-block">
         <div class="aside-label">Instruments</div>
         <div class="chip-area" id="chips"></div>
         <div class="add-wrap">
@@ -713,6 +839,54 @@ tbody td:nth-child(2){text-align:left}
            placeholder="Add a ticker, change risk, ask anything…"
            onkeydown="if(event.key==='Enter')sendChat()">
     <button id="chat-send" class="chat-send" onclick="sendChat()">Send</button>
+  </div>
+</div>
+
+<!-- BROKERAGE IMPORT REVIEW -->
+<div id="bk-overlay" class="wl-overlay" style="display:none" onclick="if(event.target===this)bkCloseModal()">
+  <div class="bk-modal">
+    <button class="wl-close" onclick="bkCloseModal()" aria-label="Close">✕</button>
+    <div class="wl-title">Review positions</div>
+    <div class="wl-sub" id="bk-sub">Choose what to optimize.</div>
+
+    <div id="bk-notes" class="bk-notes"></div>
+
+    <div class="bk-list-head">
+      <span id="bk-count">0 of 15 selected</span>
+      <button class="bk-selbtn" onclick="bkSelectTop()">Reset to top 15</button>
+    </div>
+    <div class="bk-list" id="bk-list"></div>
+
+    <div class="bk-excluded" id="bk-excluded" style="display:none">
+      <div class="bk-excluded-head">Cannot be modelled</div>
+      <div id="bk-excluded-list"></div>
+    </div>
+
+    <button id="bk-import" class="wl-submit" onclick="bkImport()">Import selected</button>
+    <div class="bk-fine">
+      Holdings are read only. PortfolioAI never places trades and cannot move money.
+    </div>
+  </div>
+</div>
+
+<!-- GUIDED TOUR -->
+<div id="tb-top"    class="tour-block"></div>
+<div id="tb-bottom" class="tour-block"></div>
+<div id="tb-left"   class="tour-block"></div>
+<div id="tb-right"  class="tour-block"></div>
+<div id="tour-ring" class="tour-ring"></div>
+<div id="tour-pop"  class="tour-pop" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+  <div class="tour-step" id="tour-step"></div>
+  <div class="tour-title" id="tour-title"></div>
+  <div class="tour-body" id="tour-body"></div>
+  <div class="tour-hint" id="tour-hint" style="display:none"></div>
+  <div class="tour-foot">
+    <button class="tour-skip" onclick="endTour(false)">Skip tour</button>
+    <div class="tour-dots" id="tour-dots"></div>
+    <div class="tour-nav">
+      <button class="tour-btn" id="tour-back" onclick="tourGo(-1)">Back</button>
+      <button class="tour-btn primary" id="tour-next" onclick="tourGo(1)">Next</button>
+    </div>
   </div>
 </div>
 
@@ -1140,12 +1314,13 @@ function render(data, holdings) {
       : r.action==='SELL'
       ? `<span class="action a-sell">SELL</span>`
       : `<span class="action a-hold">HOLD</span>`;
+    const clustDot = c => /Growth/.test(c) ? 'cd-growth' : /Defensive/.test(c) ? 'cd-def' : 'cd-mod';
     const sigCls = r.rf_signal==='Bullish'?'sig-bull':r.rf_signal==='Bearish'?'sig-bear':'sig-neu';
     const sigTxt = r.rf_signal==='Bullish'?'▲ Bullish':r.rf_signal==='Bearish'?'▼ Bearish':'● Neutral';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="sym">${t}</span></td>
-      <td><span class="clust">${r.cluster}</span></td>
+      <td><span class="clust"><span class="cdot ${clustDot(r.cluster)}"></span>${r.cluster}</span></td>
       <td><span class="${sigCls}">${sigTxt}</span></td>
       <td class="mono-val">$${(r.current_value).toLocaleString('en',{maximumFractionDigits:0})}</td>
       <td class="mono-dim">${(r.current_weight*100).toFixed(1)}%</td>
@@ -1164,6 +1339,8 @@ function render(data, holdings) {
     el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
     setTimeout(() => { el.style.transition = 'opacity .4s ease, transform .4s ease'; el.style.opacity = '1'; el.style.transform = 'none'; }, i*60);
   });
+
+  startTourAct2();   // resumes the tour if the user reached here from act 1
 }
 
 // ── CLAUDE EXPLAIN ──
@@ -1472,10 +1649,488 @@ function setText(id, val, cls) {
 }
 function pct(v) { return (v*100).toFixed(2)+'%'; }
 
+// ══ BROKERAGE IMPORT (SnapTrade, read-only) ═══════════════════
+// Connect a brokerage and let it fill the sidebar. Nothing here can trade.
+// The bearer token lives in sessionStorage only — it dies with the tab.
+
+const BK_TOKEN_KEY = 'snaptrade_token';
+let bkPositions = null;    // last reconciliation payload
+let bkMax = 15;
+
+const bkToken = () => sessionStorage.getItem(BK_TOKEN_KEY);
+const bkAuth  = () => ({ 'Authorization': 'Bearer ' + bkToken() });
+
+function bkNote(msg, isErr) {
+  const el = document.getElementById('bk-note');
+  el.textContent = msg || '';
+  el.className = 'bk-note' + (isErr ? ' err' : '');
+}
+
+// Hide the whole block unless the server says the feature is configured.
+async function bkInit() {
+  try {
+    const r = await fetch(`${API}/snaptrade/status`);
+    const s = await r.json();
+    if (!s.enabled) return;
+    bkMax = s.max_tickers || 15;
+    document.getElementById('bk-block').style.display = '';
+    if (bkToken()) bkRefreshLinked();
+  } catch (_) { /* feature stays hidden */ }
+}
+
+async function bkSession() {
+  if (bkToken()) return bkToken();
+  const r = await fetch(`${API}/snaptrade/session`, { method: 'POST' });
+  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || 'Could not start session');
+  const { token } = await r.json();
+  sessionStorage.setItem(BK_TOKEN_KEY, token);
+  return token;
+}
+
+async function bkConnect() {
+  const btn = document.getElementById('bk-connect');
+  btn.disabled = true;
+  bkNote('Opening your brokerage…');
+  track('snaptrade_connect_started');
+  try {
+    await bkSession();
+    const r = await fetch(`${API}/snaptrade/connect`, {
+      method: 'POST', headers: { ...bkAuth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uri: null })
+    });
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || 'Connect failed');
+    const { url } = await r.json();
+
+    const popup = window.open(url, 'snaptrade', 'width=520,height=760');
+    if (!popup) { bkNote('Allow pop-ups to connect your brokerage.', true); return; }
+    bkNote('Waiting for you to finish in the pop-up…');
+    bkPoll(popup);
+  } catch (e) {
+    bkNote(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// SnapTrade's portal is on their origin, so we cannot read its result directly.
+// Poll for an account appearing instead, and stop when the window closes.
+function bkPoll(popup) {
+  let tries = 0;
+  const iv = setInterval(async () => {
+    tries++;
+    let accounts = [];
+    try {
+      const r = await fetch(`${API}/snaptrade/accounts`, { headers: bkAuth() });
+      if (r.ok) accounts = (await r.json()).accounts || [];
+    } catch (_) {}
+
+    if (accounts.length) {
+      clearInterval(iv);
+      try { popup.close(); } catch (_) {}
+      track('snaptrade_connected', { accounts: accounts.length });
+      bkShowLinked(accounts);
+      bkLoadPositions();
+    } else if ((popup.closed && tries > 2) || tries > 150) {   // ~5 min ceiling
+      clearInterval(iv);
+      bkNote(popup.closed ? 'No account was connected.' : 'Timed out — try again.', true);
+    }
+  }, 2000);
+}
+
+async function bkRefreshLinked() {
+  try {
+    const r = await fetch(`${API}/snaptrade/accounts`, { headers: bkAuth() });
+    if (r.status === 401) { sessionStorage.removeItem(BK_TOKEN_KEY); return; }
+    const accounts = (await r.json()).accounts || [];
+    if (accounts.length) bkShowLinked(accounts);
+  } catch (_) {}
+}
+
+function bkShowLinked(accounts) {
+  document.getElementById('bk-connect').style.display = 'none';
+  document.getElementById('bk-linked').style.display = '';
+  const broker = accounts[0].broker || 'Brokerage';
+  document.getElementById('bk-linked-text').textContent =
+    accounts.length > 1 ? `${broker} · ${accounts.length} accounts` : broker;
+  bkNote('');
+}
+
+async function bkDisconnect() {
+  try { await fetch(`${API}/snaptrade/session`, { method: 'DELETE', headers: bkAuth() }); }
+  catch (_) {}
+  sessionStorage.removeItem(BK_TOKEN_KEY);
+  document.getElementById('bk-connect').style.display = '';
+  document.getElementById('bk-linked').style.display = 'none';
+  bkNote('Disconnected.');
+}
+
+async function bkLoadPositions() {
+  bkNote('Reading your positions…');
+  try {
+    const r = await fetch(`${API}/snaptrade/positions`, { headers: bkAuth() });
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || 'Could not read positions');
+    bkPositions = await r.json();
+    bkNote('');
+    bkOpenModal();
+  } catch (e) {
+    bkNote(e.message, true);
+  }
+}
+
+// ── review modal ──
+function bkOpenModal() {
+  const p = bkPositions;
+  if (!p) return;
+  bkMax = p.max_tickers || bkMax;
+
+  document.getElementById('bk-sub').textContent =
+    `${p.supported.length} position(s) we can model` +
+    (p.accounts && p.accounts.length ? ` across ${p.accounts.length} account(s).` : '.');
+
+  document.getElementById('bk-notes').innerHTML =
+    (p.notes || []).map(n => `<div class="bk-note-item">${esc(n)}</div>`).join('');
+
+  document.getElementById('bk-list').innerHTML = p.supported.map((s, i) => `
+    <label class="bk-row">
+      <input type="checkbox" ${s.selected ? 'checked' : ''} data-i="${i}" onchange="bkTally()">
+      <span class="bk-sym">${esc(s.symbol)}</span>
+      <span class="bk-units">${s.units} units</span>
+      <span class="bk-val">$${s.value.toLocaleString('en',{maximumFractionDigits:0})}</span>
+    </label>`).join('');
+
+  const ex = p.unsupported || [];
+  document.getElementById('bk-excluded').style.display = ex.length ? '' : 'none';
+  document.getElementById('bk-excluded-list').innerHTML = ex.map(u => `
+    <div class="bk-ex-row">
+      <span class="bk-ex-sym">${esc(u.symbol)}</span>
+      <span class="bk-ex-reason">${esc(u.reason)}</span>
+      <span>$${(u.value||0).toLocaleString('en',{maximumFractionDigits:0})}</span>
+    </div>`).join('');
+
+  bkTally();
+  document.getElementById('bk-overlay').style.display = 'flex';
+}
+
+function bkCloseModal() {
+  document.getElementById('bk-overlay').style.display = 'none';
+}
+
+function bkChecked() {
+  return [...document.querySelectorAll('#bk-list input:checked')]
+    .map(el => bkPositions.supported[+el.dataset.i]);
+}
+
+// The 15-ticker cap is a real pipeline constraint, not a UI preference: each
+// extra ticker trains another Random Forest, so 30 roughly doubles the run.
+function bkTally() {
+  const n = bkChecked().length;
+  const el = document.getElementById('bk-count');
+  el.textContent = `${n} of ${bkMax} selected`;
+  el.className = n > bkMax ? 'over' : '';
+  const btn = document.getElementById('bk-import');
+  btn.disabled = n < 2 || n > bkMax;
+  btn.textContent = n > bkMax ? `Deselect ${n - bkMax} to import`
+                  : n < 2     ? 'Select at least 2'
+                  : `Import ${n} position(s)`;
+}
+
+function bkSelectTop() {
+  document.querySelectorAll('#bk-list input').forEach(el => {
+    el.checked = bkPositions.supported[+el.dataset.i].selected;
+  });
+  bkTally();
+}
+
+function bkImport() {
+  const picked = bkChecked();
+  if (picked.length < 2 || picked.length > bkMax) return;
+
+  tickers = picked.map(p => p.symbol);
+  renderChips();
+
+  const total = picked.reduce((a, p) => a + p.value, 0);
+  document.getElementById('tot').value = Math.round(total);
+  renderH();                                    // rebuild the holdings grid
+  picked.forEach(p => {                         // then set each real value
+    const el = document.getElementById('h-' + p.symbol);
+    if (el) { el.value = Math.round(p.value); upP(p.symbol, total); }
+  });
+
+  track('snaptrade_import_completed', {
+    imported: picked.length,
+    available: bkPositions.supported.length,
+    excluded: (bkPositions.unsupported || []).length
+  });
+
+  bkCloseModal();
+  bkNote(`Imported ${picked.length} position(s). Run the optimization when ready.`);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ══ GUIDED TOUR ═══════════════════════════════════════════════
+// Two acts: the inputs (act 1, before any run) and the results (act 2,
+// after the first optimization). Act 2 can't run earlier — #results is
+// display:none until render() fills it, so its targets have no geometry.
+
+const TOUR_KEY  = 'tour_state';    // 'act1_done' | 'done'
+const TOUR_LIVE = 'tour_act1';     // sessionStorage — dies with the tab
+
+// 'act1_done' only means something while the user is still in the visit where
+// they saw act 1. Coming back days later and being ambushed by act 2 with no
+// memory of act 1 is worse than simply starting over, so a new browser session
+// resets the halfway state and the tour opens from the top.
+function tourReconcileState() {
+  if (localStorage.getItem(TOUR_KEY) === 'act1_done' &&
+      !sessionStorage.getItem(TOUR_LIVE)) {
+    localStorage.removeItem(TOUR_KEY);
+  }
+}
+
+const TOUR_ACT1 = [
+  { title: 'Welcome to PortfolioAI',
+    body: 'This terminal runs five machine-learning models over your holdings and returns a concrete trade list. The tour takes about a minute — you can leave at any point.',
+    center: true, next: 'Show me around' },
+  // Self-hides when SnapTrade is unconfigured: #bk-block stays display:none and
+  // tourPrep() filters steps whose target has no geometry.
+  { el: '#bk-block', title: 'Connect your brokerage',
+    body: 'Link a brokerage account and your positions fill in automatically — tickers, dollar amounts and total value. Read-only: PortfolioAI cannot place trades or move money.',
+    hint: 'Prefer not to connect? Enter everything by hand below — nothing here is required.',
+    place: 'right' },
+  { el: '#inst-block', title: 'Your instruments',
+    body: 'These chips are the assets the optimizer will consider. Start from the defaults or build your own set — <b>2 to 15</b> instruments.',
+    hint: 'Click the ✕ on any chip to drop it.', place: 'right' },
+  { el: '.add-wrap', title: 'Add from 288 instruments',
+    body: 'Search by ticker or company name — <code>AAPL</code> or <code>Apple</code> both work. The universe covers stocks, sector and factor ETFs, bonds, commodities and crypto ETFs.',
+    place: 'right' },
+  { el: '#tot', title: 'Portfolio value',
+    body: 'Set your total capital. Every trade instruction is sized in real dollars against this number, so it is worth setting accurately.',
+    place: 'right' },
+  { el: '#hgrid', title: 'Current holdings',
+    body: 'Enter what you hold today in each position. The optimizer compares its target allocation against these to work out what to buy and sell.',
+    hint: 'Leave them all at zero and it assumes a $10,000 notional.', place: 'right' },
+  { el: '#runbtn', title: 'Run the pipeline',
+    body: 'This clusters your assets, forecasts returns per ticker, scores the market regime and solves for the optimal allocation. It takes a few seconds.',
+    hint: 'Click Run Optimization — the tour picks back up with your results.',
+    place: 'top', cta: true }
+];
+
+const TOUR_ACT2 = [
+  { el: '.stat-row', title: 'Before and after',
+    body: 'Your current portfolio versus the optimized one, across volatility, return and Sharpe ratio. <b>Sharpe</b> is return per unit of risk — higher is better.',
+    place: 'bottom' },
+  { el: '#rnum', title: 'The MLP risk score',
+    body: 'A neural network reads the current market regime and scores it from 0 to 1. This is not a prediction of losses — it measures how turbulent conditions are right now.',
+    hint: 'The score tightens the optimizer’s limits: calm markets allow bigger positions, volatile ones force diversification.',
+    place: 'bottom' },
+  { el: '.imp-row', title: 'What you gain',
+    body: 'The change the rebalance would produce. A negative volatility figure is good — it means less risk for the return you are taking.',
+    place: 'bottom' },
+  { el: '.charts-row', title: 'Allocation shift',
+    body: 'Your current split beside the optimized one. Hover any slice for the dollar value and weight.',
+    place: 'top' },
+  { el: '#tbody', title: 'Your trade list',
+    body: 'The output that matters: every position with its cluster, forecast signal, target weight and the exact dollar amount to <b>BUY</b>, <b>SELL</b> or <b>HOLD</b>.',
+    place: 'top' },
+  { el: '#claude-btn', title: 'Explain with Claude',
+    body: 'Turns the table above into a plain-English readout — what the risk score means, why the largest trades make sense, and what you gain.',
+    place: 'bottom' },
+  { el: '#snap-bar', title: 'Compare scenarios',
+    body: 'Every run is saved. Flip between them, or hit <b>Compare</b> for a side-by-side delta table showing exactly what changed.',
+    place: 'bottom', optional: true },
+  { el: '#chat-fab', title: 'Ask anything',
+    body: 'The assistant answers questions about your result and takes commands — try <code>add TSLA</code> or <code>make it more defensive</code>. It edits your tickers, re-runs the pipeline and reports back.',
+    place: 'left' },
+  { title: 'You’re set',
+    body: 'That is the whole terminal. Remember the results are model output on historical data, for research only — not investment advice.',
+    hint: 'Replay this tour any time from the ? button in the top bar.',
+    center: true, next: 'Start optimizing' }
+];
+
+let TOUR = { steps: [], i: 0, act: 1, on: false };
+
+function tourEl(sel) {
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return (r.width > 0 && r.height > 0) ? el : null;   // skip hidden targets
+}
+
+// Drop steps whose target isn't on screen right now, so the step count is honest.
+const tourPrep = list => list.filter(s => !s.el || tourEl(s.el));
+
+function startTour(manual) {
+  if (TOUR.on) return;
+  // Replay always restarts from act 1; results steps are appended if on screen.
+  const resultsUp = !!tourEl('.stat-row');
+  TOUR.steps = tourPrep(manual && resultsUp ? TOUR_ACT1.concat(TOUR_ACT2) : TOUR_ACT1);
+  TOUR.act = 1; TOUR.i = 0; TOUR.on = true;
+  track('tour_start', { manual: !!manual });
+  tourRender();
+}
+
+function startTourAct2() {
+  if (localStorage.getItem(TOUR_KEY) !== 'act1_done') return;
+  TOUR.act = 2; TOUR.i = 0; TOUR.on = true;
+  track('tour_start', { act: 2 });
+  setTimeout(() => {                 // let the .fade result animations settle
+    TOUR.steps = tourPrep(TOUR_ACT2);
+    tourRender();
+  }, 620);
+}
+
+function tourGo(dir) {
+  const step = TOUR.steps[TOUR.i];
+  // The run-button step hands control back to the user mid-tour.
+  if (dir > 0 && step && step.cta) {
+    localStorage.setItem(TOUR_KEY, 'act1_done');
+    sessionStorage.setItem(TOUR_LIVE, '1');   // marks act 1 as done *this visit*
+    endTour(false, true);
+    document.getElementById('runbtn').focus();
+    return;
+  }
+  let n = TOUR.i + dir;
+  while (TOUR.steps[n] && TOUR.steps[n].el && !tourEl(TOUR.steps[n].el)) n += dir;  // hop over absent targets
+  if (n < 0) return;
+  if (n >= TOUR.steps.length) { endTour(true); return; }
+  TOUR.i = n;
+  tourRender();
+}
+
+function tourRender() {
+  const step = TOUR.steps[TOUR.i];
+  if (!step) { endTour(true); return; }
+
+  const pop = document.getElementById('tour-pop');
+  document.getElementById('tour-step').textContent = `STEP ${TOUR.i + 1} OF ${TOUR.steps.length}`;
+  document.getElementById('tour-title').textContent = step.title;
+  document.getElementById('tour-body').innerHTML = step.body;
+  const hint = document.getElementById('tour-hint');
+  hint.style.display = step.hint ? 'block' : 'none';
+  if (step.hint) hint.textContent = step.hint;
+
+  document.getElementById('tour-back').style.visibility = TOUR.i === 0 ? 'hidden' : 'visible';
+  document.getElementById('tour-next').textContent =
+    step.next || (TOUR.i === TOUR.steps.length - 1 ? 'Finish' : 'Next');
+
+  document.getElementById('tour-dots').innerHTML =
+    TOUR.steps.map((_, i) => `<span class="tour-dot${i === TOUR.i ? ' on' : ''}"></span>`).join('');
+
+  pop.style.display = 'block';
+
+  const el = step.el ? tourEl(step.el) : null;
+  if (!el) { tourPosition(null, step); return; }
+
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  tourTrack(el, step);
+}
+
+// Smooth scrolling has no completion event, and a fixed delay guesses wrong —
+// so re-measure every frame until the target's box stops moving.
+function tourTrack(el, step) {
+  let last = '', still = 0, frames = 0;
+  const tick = () => {
+    if (!TOUR.on || TOUR.steps[TOUR.i] !== step) return;   // step changed under us
+    const r = el.getBoundingClientRect();
+    const now = `${Math.round(r.top)}:${Math.round(r.left)}:${Math.round(r.width)}:${Math.round(r.height)}`;
+    still = (now === last) ? still + 1 : 0;
+    last = now;
+    tourPosition(el, step);
+    if (still < 3 && ++frames < 120) requestAnimationFrame(tick);   // ~2s ceiling
+  };
+  requestAnimationFrame(tick);
+}
+
+// Keep the ring glued to its target if anything scrolls afterwards.
+function tourSync() {
+  if (!TOUR.on) return;
+  const step = TOUR.steps[TOUR.i];
+  if (!step) return;
+  tourPosition(step.el ? tourEl(step.el) : null, step);
+}
+
+function tourPosition(el, step) {
+  const ring   = document.getElementById('tour-ring');
+  const pop    = document.getElementById('tour-pop');
+  const blocks = ['tb-top','tb-bottom','tb-left','tb-right'].map(id => document.getElementById(id));
+  const VW = innerWidth, VH = innerHeight, PAD = 6, GAP = 15;
+
+  if (!el) {   // centered welcome / closing card — one full-screen scrim
+    ring.style.display = 'none';
+    blocks[0].style.cssText = 'position:fixed;display:block;top:0;left:0;width:100%;height:100%';
+    blocks.slice(1).forEach(b => b.style.display = 'none');
+    pop.style.left = Math.max(10, (VW - pop.offsetWidth) / 2) + 'px';
+    pop.style.top  = Math.max(10, (VH - pop.offsetHeight) / 2) + 'px';
+    return;
+  }
+
+  const r = el.getBoundingClientRect();
+  const t = Math.max(0, r.top - PAD), l = Math.max(0, r.left - PAD);
+  const w = Math.min(VW, r.width + PAD * 2), h = Math.min(VH, r.height + PAD * 2);
+
+  ring.style.display = 'block';
+  Object.assign(ring.style, { top: t+'px', left: l+'px', width: w+'px', height: h+'px' });
+
+  // Four panels dim + swallow clicks everywhere except the target, which stays live.
+  const B = (b, css) => { b.style.display = 'block'; b.style.cssText = 'position:fixed;display:block;' + css; };
+  B(blocks[0], `top:0;left:0;width:100%;height:${t}px`);
+  B(blocks[1], `top:${t+h}px;left:0;width:100%;height:${Math.max(0,VH-t-h)}px`);
+  B(blocks[2], `top:${t}px;left:0;width:${l}px;height:${h}px`);
+  B(blocks[3], `top:${t}px;left:${l+w}px;width:${Math.max(0,VW-l-w)}px;height:${h}px`);
+
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let top, left, done = false;
+  for (const p of [step.place || 'right', 'right', 'bottom', 'top', 'left']) {
+    if (p === 'right'  && l+w+GAP+pw <= VW-8) { left = l+w+GAP;  top = r.top + r.height/2 - ph/2; done = true; }
+    else if (p === 'left'   && l-GAP-pw >= 8) { left = l-GAP-pw; top = r.top + r.height/2 - ph/2; done = true; }
+    else if (p === 'bottom' && t+h+GAP+ph <= VH-8) { top = t+h+GAP; left = r.left + r.width/2 - pw/2; done = true; }
+    else if (p === 'top'    && t-GAP-ph >= 8) { top = t-GAP-ph; left = r.left + r.width/2 - pw/2; done = true; }
+    if (done) break;
+  }
+  if (!done) { top = Math.min(VH - ph - 10, t + h + GAP); left = r.left; }
+
+  pop.style.left = Math.max(10, Math.min(left, VW - pw - 10)) + 'px';
+  pop.style.top  = Math.max(10, Math.min(top,  VH - ph - 10)) + 'px';
+}
+
+function endTour(completed, pausing) {
+  TOUR.on = false;
+  document.getElementById('tour-pop').style.display = 'none';
+  document.getElementById('tour-ring').style.display = 'none';
+  ['tb-top','tb-bottom','tb-left','tb-right'].forEach(id => document.getElementById(id).style.display = 'none');
+  if (pausing) return;                       // act 1 handing off to the run button
+  localStorage.setItem(TOUR_KEY, 'done');
+  track(completed ? 'tour_complete' : 'tour_skip', { act: TOUR.act, step: TOUR.i + 1 });
+}
+
+addEventListener('keydown', e => {
+  if (!TOUR.on) return;
+  if (e.key === 'Escape')     { endTour(false); }
+  if (e.key === 'ArrowRight') { tourGo(1); }
+  if (e.key === 'ArrowLeft' && TOUR.i > 0) { tourGo(-1); }
+});
+addEventListener('resize', tourSync);
+addEventListener('scroll', tourSync, true);   // capture — <main> scrolls, not the window
+
+// Catch layout shifts that aren't scrolls or resizes — e.g. the waitlist
+// banner being dismissed, which moves everything below it up.
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => tourSync());
+  ['.main-wrap', 'aside'].forEach(s => { const n = document.querySelector(s); if (n) ro.observe(n); });
+}
+
 // ── INIT ──
 renderChips();
 loadCatalog();
+bkInit();
 document.addEventListener('click', e => { if (!e.target.closest('.add-wrap')) acClose(); });
+tourReconcileState();
+// Wait for bkInit's status call so the brokerage tour step reflects reality —
+// tourPrep() drops steps whose target is hidden, and #bk-block starts hidden.
+if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => startTour(false), 1200);
 </script>
 </body>
 </html>

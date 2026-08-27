@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>PortfolioAI — AI-Powered Portfolio Rebalancing</title>
+<meta name="description" content="PortfolioAI profiles every asset, forecasts forward returns, scores market risk with a neural network, and solves for the optimal allocation — then tells you exactly what to buy and sell, in dollars. Request a demo."/>
+<meta property="og:title" content="PortfolioAI — AI-Powered Portfolio Rebalancing"/>
+<meta property="og:description" content="Five models. 288 instruments. Concrete BUY / SELL / HOLD instructions in dollars. Request a demo."/>
+<meta property="og:type" content="website"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Ccircle cx='28' cy='28' r='26' fill='%233dd68c'/%3E%3Ccircle cx='28' cy='28' r='13' fill='%230d0f14'/%3E%3C/svg%3E"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:    #0d0f14;
+  --s1:    #12151c;
+  --s2:    #181c25;
+  --s3:    #1e232e;
+  --s4:    #252b38;
+  --line:  rgba(255,255,255,.06);
+  --line2: rgba(255,255,255,.1);
+  --t1:    #eef0f6;
+  --t2:    #8b92a5;
+  --t3:    #4e5568;
+  --t4:    #2e3344;
+  --g:     #3dd68c;
+  --g2:    #2ab574;
+  --gb:    rgba(61,214,140,.1);
+  --gb2:   rgba(61,214,140,.06);
+  --red:   #f4645f;
+  --rb:    rgba(244,100,95,.1);
+  --amb:   #f5a623;
+  --abb:   rgba(245,166,35,.1);
+  --blue:  #5b9cf6;
+  --sans:  'DM Sans', sans-serif;
+  --mono:  'DM Mono', monospace;
+  --serif: 'Playfair Display', serif;
+  --maxw:  1120px;
+}
+
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--t1);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+::selection{background:rgba(61,214,140,.25)}
+
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+/* ─── NAV ─── */
+nav{
+  position:sticky;top:0;z-index:100;
+  height:60px;background:rgba(13,15,20,.82);
+  backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:0 24px;height:100%;display:flex;align-items:center;gap:10px}
+.brand{display:flex;align-items:center;gap:9px}
+.brand-name{font-family:var(--serif);font-size:17px;font-weight:500;letter-spacing:.3px}
+.brand-name span{color:var(--g)}
+.nav-links{display:flex;gap:26px;margin-left:40px}
+.nav-links a{font-size:13px;color:var(--t2);transition:color .15s}
+.nav-links a:hover{color:var(--t1)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:9px 18px;border-radius:8px;border:1px solid transparent;
+  font-family:var(--sans);font-size:13px;font-weight:600;letter-spacing:.2px;
+  cursor:pointer;transition:all .18s;white-space:nowrap;
+}
+.btn-solid{background:var(--g);color:#0d0f14;border-color:var(--g)}
+.btn-solid:hover{background:var(--g2);border-color:var(--g2);transform:translateY(-1px);box-shadow:0 8px 24px rgba(61,214,140,.22)}
+.btn-ghost{background:transparent;border-color:var(--line2);color:var(--t2)}
+.btn-ghost:hover{border-color:var(--g);color:var(--g)}
+.btn-lg{padding:13px 26px;font-size:14px;border-radius:9px}
+
+.pill-beta{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 12px;border-radius:20px;
+  background:var(--abb);border:1px solid rgba(245,166,35,.35);
+  color:var(--amb);font-size:11px;font-weight:500;letter-spacing:.5px;
+}
+.beta-dot{width:5px;height:5px;border-radius:50%;background:var(--amb)}
+
+/* ─── HERO ─── */
+header{position:relative;overflow:hidden;padding:88px 0 72px}
+.glow{
+  position:absolute;top:-260px;left:50%;transform:translateX(-50%);
+  width:900px;height:520px;pointer-events:none;
+  background:radial-gradient(ellipse at center,rgba(61,214,140,.13),transparent 68%);
+}
+.hero{position:relative;text-align:center;max-width:760px;margin:0 auto}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--g);margin-bottom:20px;
+}
+h1{
+  font-family:var(--serif);font-weight:400;
+  font-size:clamp(36px,6vw,58px);line-height:1.1;letter-spacing:-1px;
+}
+h1 em{font-style:normal;color:var(--g)}
+.hero-sub{font-size:17px;color:var(--t2);margin:22px auto 0;max-width:600px;line-height:1.65}
+.hero-cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+.hero-note{margin-top:16px;font-size:12px;color:var(--t3)}
+
+.trust{
+  display:flex;justify-content:center;gap:0;flex-wrap:wrap;
+  margin-top:52px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+}
+.trust-item{padding:18px 30px;text-align:center;border-right:1px solid var(--line)}
+.trust-item:last-child{border-right:none}
+.trust-val{font-family:var(--mono);font-size:22px;font-weight:400;color:var(--t1);letter-spacing:-.3px;line-height:1}
+.trust-lbl{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--t3);margin-top:7px}
+
+/* ─── SECTIONS ─── */
+section{padding:76px 0}
+.sec-head{max-width:660px;margin-bottom:44px}
+.sec-head.center{margin-left:auto;margin-right:auto;text-align:center}
+.sec-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--t3);margin-bottom:14px}
+h2{font-family:var(--serif);font-weight:400;font-size:clamp(27px,3.6vw,36px);line-height:1.2;letter-spacing:-.5px}
+.sec-sub{font-size:15px;color:var(--t2);margin-top:14px}
+
+/* ─── MOCK TERMINAL ─── */
+.mock{
+  background:var(--s1);border:1px solid var(--line);border-radius:12px;
+  overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5);
+}
+.mock-bar{
+  height:38px;background:var(--s2);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:7px;padding:0 14px;
+}
+.mock-dot{width:9px;height:9px;border-radius:50%;background:var(--s4)}
+.mock-title{margin-left:10px;font-family:var(--mono);font-size:11px;color:var(--t3)}
+.mock-live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--g);animation:pulse 2.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+
+.mock-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line)}
+.mstat{background:var(--s1);padding:16px 18px}
+.mstat-lbl{font-size:9px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:var(--t3);margin-bottom:8px}
+.mstat-val{font-family:var(--mono);font-size:21px;font-weight:400;line-height:1;letter-spacing:-.3px}
+.mstat-sub{font-size:10px;color:var(--t3);margin-top:5px}
+.col-g{color:var(--g)}.col-r{color:var(--red)}.col-t{color:var(--t1)}.col-a{color:var(--amb)}
+
+.mock-risk{display:flex;gap:28px;padding:20px 22px;border-top:1px solid var(--line);align-items:flex-start}
+.mrisk-num{font-family:var(--mono);font-size:40px;font-weight:400;line-height:1;letter-spacing:-.5px;color:var(--amb)}
+.mrisk-badge{
+  display:inline-flex;margin-top:8px;padding:4px 10px;border-radius:20px;
+  background:var(--abb);color:var(--amb);border:1px solid rgba(245,166,35,.25);
+  font-size:9px;font-weight:600;letter-spacing:1px;
+}
+.mrisk-right{flex:1;padding-top:4px}
+.mbar-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-bottom:8px}
+.mbar-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--g),var(--amb),var(--red));position:relative;opacity:.75}
+.mbar-needle{position:absolute;top:-4px;width:2px;height:14px;background:var(--t1);border-radius:1px;left:52%}
+.mrisk-desc{font-size:12px;color:var(--t2);font-style:italic;margin-top:12px;line-height:1.55}
+
+.mock-table{width:100%;border-collapse:collapse;border-top:1px solid var(--line)}
+.mock-table th{
+  padding:10px 18px;font-size:9px;font-weight:600;letter-spacing:1.4px;
+  text-transform:uppercase;color:var(--t3);text-align:right;
+  border-bottom:1px solid var(--line);background:var(--s2);
+}
+.mock-table th:first-child,.mock-table td:first-child{text-align:left}
+.mock-table td{padding:11px 18px;text-align:right;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--t2)}
+.mock-table tr:last-child td{border-bottom:none}
+.msym{color:var(--t1);font-weight:500}
+.mclust{
+  display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:5px;font-family:var(--sans);
+  font-size:10px;color:var(--t2);background:var(--s3);border:1px solid var(--line2);
+}
+.cdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.cd-growth{background:var(--g)}
+.cd-mod{background:var(--blue)}
+.cd-def{background:var(--t2)}
+.mact{display:inline-flex;padding:3px 10px;border-radius:6px;font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.5px}
+.a-buy{background:var(--gb);color:var(--g);border:1px solid rgba(61,214,140,.25)}
+.a-sell{background:var(--rb);color:var(--red);border:1px solid rgba(244,100,95,.25)}
+.a-hold{background:var(--s3);color:var(--t3);border:1px solid var(--line2)}
+.mock-cap{text-align:center;font-size:11px;color:var(--t3);margin-top:14px;font-style:italic}
+
+/* ─── PIPELINE ─── */
+.pipe{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pstep{background:var(--s1);padding:22px 24px;display:grid;grid-template-columns:52px 210px 1fr;gap:22px;align-items:start;transition:background .2s}
+.pstep:hover{background:var(--s2)}
+.pnum{
+  width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:var(--gb);border:1px solid rgba(61,214,140,.22);
+  font-family:var(--mono);font-size:13px;color:var(--g);
+}
+.pname{font-size:15px;font-weight:600;color:var(--t1)}
+.ptype{font-family:var(--mono);font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);margin-top:5px}
+.pdesc{font-size:13.5px;color:var(--t2);line-height:1.65}
+
+/* ─── FEATURE GRID ─── */
+.fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.fcard{
+  background:var(--s1);border:1px solid var(--line);border-radius:11px;padding:24px;
+  transition:border-color .2s,transform .2s;
+}
+.fcard:hover{border-color:var(--line2);transform:translateY(-2px)}
+.ficon{
+  width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:var(--gb2);border:1px solid var(--line2);margin-bottom:16px;
+}
+.ftitle{font-size:15px;font-weight:600;margin-bottom:8px}
+.fdesc{font-size:13.5px;color:var(--t2);line-height:1.6}
+
+/* ─── MODELS TABLE ─── */
+.mtable-wrap{border:1px solid var(--line);border-radius:11px;overflow:hidden;overflow-x:auto}
+table.models{width:100%;border-collapse:collapse;min-width:620px}
+table.models th{
+  padding:12px 20px;text-align:left;background:var(--s2);
+  font-size:9px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;
+  color:var(--t3);border-bottom:1px solid var(--line);
+}
+table.models td{padding:14px 20px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--t2)}
+table.models tr:last-child td{border-bottom:none}
+table.models tbody tr{background:var(--s1)}
+table.models tbody tr:hover{background:var(--s2)}
+.m-name{font-family:var(--mono);font-size:12.5px;color:var(--t1)}
+.m-tag{font-family:var(--mono);font-size:11px;color:var(--g)}
+
+/* ─── DEMO STEPS ─── */
+.dsteps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.dstep{background:var(--s1);border:1px solid var(--line);border-radius:11px;padding:24px;position:relative}
+.dstep-n{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;color:var(--g);margin-bottom:12px}
+.dstep-t{font-size:15px;font-weight:600;margin-bottom:8px}
+.dstep-d{font-size:13.5px;color:var(--t2);line-height:1.6}
+
+/* ─── DEMO FORM ─── */
+.demo-band{border-top:1px solid var(--line);background:linear-gradient(180deg,var(--s1),var(--bg))}
+.demo-grid{display:grid;grid-template-columns:1fr 420px;gap:56px;align-items:start}
+.demo-list{list-style:none;margin-top:26px;display:flex;flex-direction:column;gap:13px}
+.demo-list li{display:flex;gap:11px;font-size:14px;color:var(--t2);align-items:flex-start}
+.tick{flex-shrink:0;margin-top:5px;display:flex}
+
+.form-card{background:var(--s1);border:1px solid var(--line2);border-radius:14px;padding:28px 26px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+.form-title{font-family:var(--serif);font-size:21px;font-weight:500}
+.form-sub{font-size:13px;color:var(--t2);margin:5px 0 20px}
+.lbl{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.5px;color:var(--t2);margin:14px 0 6px}
+.inp{
+  width:100%;background:#0d1017;border:1px solid var(--line2);border-radius:8px;
+  padding:11px 13px;color:var(--t1);font-size:14px;font-family:var(--sans);outline:none;
+  transition:border-color .18s;
+}
+.inp:focus{border-color:var(--g)}
+select.inp{cursor:pointer}
+.submit{
+  width:100%;margin-top:22px;padding:13px;border-radius:9px;border:1px solid var(--g);
+  background:var(--g);color:#0d0f14;font-size:14px;font-weight:600;font-family:var(--sans);
+  cursor:pointer;transition:background .15s;
+}
+.submit:hover:not(:disabled){background:var(--g2)}
+.submit:disabled{opacity:.55;cursor:default}
+.form-status{margin-top:14px;font-size:13px;text-align:center;min-height:19px}
+.form-status.ok{color:var(--g)}
+.form-status.err{color:var(--red)}
+.form-fine{margin-top:14px;font-size:11px;color:var(--t3);text-align:center;line-height:1.5}
+
+/* ─── FAQ ─── */
+.faq{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+details{background:var(--s1)}
+summary{
+  padding:18px 22px;cursor:pointer;list-style:none;
+  font-size:14.5px;font-weight:500;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  transition:background .15s;
+}
+summary::-webkit-details-marker{display:none}
+summary:hover{background:var(--s2)}
+summary::after{content:'+';font-family:var(--mono);color:var(--g);font-size:17px;flex-shrink:0}
+details[open] summary::after{content:'−'}
+.faq-body{padding:0 22px 20px;font-size:13.5px;color:var(--t2);line-height:1.7;max-width:76ch}
+
+/* ─── DISCLAIMER + FOOTER ─── */
+.disclaim{
+  border:1px solid rgba(245,166,35,.2);background:var(--abb);
+  border-radius:11px;padding:20px 24px;display:flex;gap:16px;align-items:flex-start;
+}
+.disclaim-t{font-size:13px;font-weight:600;color:var(--amb);margin-bottom:6px;letter-spacing:.3px}
+.disclaim-d{font-size:12.5px;color:var(--t2);line-height:1.65}
+
+footer{border-top:1px solid var(--line);padding:36px 0;margin-top:24px}
+.foot{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.foot-copy{font-size:12px;color:var(--t3)}
+.foot-links{margin-left:auto;display:flex;gap:22px}
+.foot-links a{font-size:12px;color:var(--t3);transition:color .15s}
+.foot-links a:hover{color:var(--g)}
+.foot-stack{
+  margin-top:18px;font-family:var(--mono);font-size:10.5px;color:var(--t4);letter-spacing:.4px;
+}
+
+/* ─── REVEAL ─── */
+.rv{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .rv{opacity:1;transform:none;transition:none}
+  html{scroll-behavior:auto}
+  .live-dot{animation:none}
+}
+
+/* ─── RESPONSIVE ─── */
+@media (max-width:940px){
+  .demo-grid{grid-template-columns:1fr;gap:36px}
+  .fgrid,.dsteps{grid-template-columns:1fr 1fr}
+  .mock-stats{grid-template-columns:1fr 1fr}
+  .nav-links{display:none}
+}
+@media (max-width:680px){
+  section{padding:56px 0}
+  header{padding:60px 0 48px}
+  .fgrid,.dsteps{grid-template-columns:1fr}
+  .pstep{grid-template-columns:1fr;gap:12px}
+  .pnum{margin-bottom:2px}
+  .mock-risk{flex-direction:column;gap:18px}
+  .trust-item{flex:1 1 44%;border-right:none;border-bottom:1px solid var(--line)}
+  .mock-table th:nth-child(3),.mock-table td:nth-child(3){display:none}
+  .foot-links{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+
+<!-- ─── NAV ─── -->
+<nav>
+  <div class="nav-in">
+    <a class="brand" href="#top">
+      <svg width="30" height="30" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M28,28 L54,28 A26,26 0 0,1 15.4,51.6 Z" fill="#3dd68c"/>
+        <path d="M28,28 L15.4,51.6 A26,26 0 0,1 2,21.2 Z" fill="#3dd68c" opacity="0.6"/>
+        <path d="M28,28 L2,21.2 A26,26 0 0,1 28,2 Z" fill="#3dd68c" opacity="0.35"/>
+        <path d="M28,28 L28,2 A26,26 0 0,1 54,28 Z" fill="#3dd68c" opacity="0.15"/>
+        <circle cx="28" cy="28" r="13" fill="#0d0f14"/>
+        <text x="28" y="33" font-family="sans-serif" font-size="14" font-weight="600" fill="#3dd68c" text-anchor="middle">P</text>
+      </svg>
+      <div class="brand-name">Portfolio<span>AI</span></div>
+    </a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#models">Models</a>
+      <a href="#demo-how">Demo</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="nav-right">
+      <span class="pill-beta"><span class="beta-dot"></span>Private Beta</span>
+      <button class="btn btn-solid" onclick="goToForm('nav')">Request a demo</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ─── HERO ─── -->
+<header id="top">
+  <div class="glow"></div>
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Machine Learning · Modern Portfolio Theory</div>
+      <h1>Know exactly what to <em>buy and sell</em> — and why.</h1>
+      <p class="hero-sub">
+        Five models profile every asset you hold, score the market regime, and solve for the optimal
+        allocation. You get a trade list in dollars, with the reasoning behind every line.
+      </p>
+      <div class="hero-cta">
+        <button class="btn btn-solid btn-lg" onclick="goToForm('hero')">Request a demo →</button>
+        <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+      </div>
+      <div class="hero-note">Access is granted after a walkthrough. No public sign-up.</div>
+    </div>
+
+    <div class="trust rv">
+      <div class="trust-item"><div class="trust-val">5</div><div class="trust-lbl">Models in the pipeline</div></div>
+      <div class="trust-item"><div class="trust-val">288</div><div class="trust-lbl">Instruments covered</div></div>
+      <div class="trust-item"><div class="trust-val">8,000</div><div class="trust-lbl">Portfolios simulated</div></div>
+      <div class="trust-item"><div class="trust-val">4.6 yr</div><div class="trust-lbl">Price history window</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- ─── PRODUCT SHOT ─── -->
+<section style="padding-top:12px">
+  <div class="wrap">
+    <div class="mock rv">
+      <div class="mock-bar">
+        <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+        <span class="mock-title">PortfolioAI — Rebalancing Terminal</span>
+        <span class="mock-live"><span class="live-dot"></span>Live</span>
+      </div>
+
+      <div class="mock-stats">
+        <div class="mstat">
+          <div class="mstat-lbl">Current Sharpe</div>
+          <div class="mstat-val col-t">0.774</div>
+          <div class="mstat-sub">risk-adjusted return</div>
+        </div>
+        <div class="mstat">
+          <div class="mstat-lbl">Optimal Sharpe</div>
+          <div class="mstat-val col-g">1.192</div>
+          <div class="mstat-sub">risk-adjusted return</div>
+        </div>
+        <div class="mstat">
+          <div class="mstat-lbl">Current Volatility</div>
+          <div class="mstat-val col-t">18.2%</div>
+          <div class="mstat-sub">annualized</div>
+        </div>
+        <div class="mstat">
+          <div class="mstat-lbl">Optimal Volatility</div>
+          <div class="mstat-val col-g">16.7%</div>
+          <div class="mstat-sub">annualized</div>
+        </div>
+      </div>
+
+      <div class="mock-risk">
+        <div>
+          <div class="mrisk-num">0.5140</div>
+          <div class="mrisk-badge">MEDIUM RISK</div>
+        </div>
+        <div class="mrisk-right">
+          <div class="mbar-labels">
+            <span style="color:var(--g)">Low volatility</span>
+            <span>Risk spectrum</span>
+            <span style="color:var(--red)">High volatility</span>
+          </div>
+          <div class="mbar-track"><div class="mbar-needle"></div></div>
+          <div class="mrisk-desc">
+            The MLP detected moderate volatility. The optimizer applies balanced constraints across asset classes.
+          </div>
+        </div>
+      </div>
+
+      <table class="mock-table">
+        <thead>
+          <tr><th>Ticker</th><th>Cluster</th><th>Signal</th><th>Weight →</th><th>Trade</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="msym">AAPL</td><td><span class="mclust"><span class="cdot cd-growth"></span>Growth</span></td>
+            <td style="color:var(--g)">Bullish</td><td>45% → 30%</td>
+            <td style="color:var(--red)">−$1,700</td><td><span class="mact a-sell">SELL</span></td>
+          </tr>
+          <tr>
+            <td class="msym">BND</td><td><span class="mclust"><span class="cdot cd-def"></span>Defensive</span></td>
+            <td style="color:var(--t3)">Neutral</td><td>4% → 18%</td>
+            <td style="color:var(--g)">+$1,610</td><td><span class="mact a-buy">BUY</span></td>
+          </tr>
+          <tr>
+            <td class="msym">MSFT</td><td><span class="mclust"><span class="cdot cd-mod"></span>Moderate</span></td>
+            <td style="color:var(--g)">Bullish</td><td>17% → 18%</td>
+            <td style="color:var(--t3)">$90</td><td><span class="mact a-hold">HOLD</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mock-cap">Illustrative output. Every figure is computed live from the tickers and holdings you enter.</div>
+  </div>
+</section>
+
+<!-- ─── HOW IT WORKS ─── -->
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="sec-eyebrow">How it works</div>
+      <h2>One run. Five models. A concrete trade list.</h2>
+      <p class="sec-sub">
+        Unsupervised learning, supervised learning, deep learning, classical portfolio theory and a
+        large language model — chained into a single pass over your holdings.
+      </p>
+    </div>
+
+    <div class="pipe rv">
+      <div class="pstep">
+        <div class="pnum">01</div>
+        <div><div class="pname">K-Means Clustering</div><div class="ptype">Unsupervised · scikit-learn</div></div>
+        <div class="pdesc">Profiles every asset as Growth, Moderate or Defensive from its return, volatility and Sharpe ratio — so you can see what each position actually contributes.</div>
+      </div>
+      <div class="pstep">
+        <div class="pnum">02</div>
+        <div><div class="pname">Random Forest Regressor</div><div class="ptype">Supervised · per ticker</div></div>
+        <div class="pdesc">Trains a separate model per instrument on a rolling-window feature set to forecast next-quarter return, producing a Bullish / Neutral / Bearish signal.</div>
+      </div>
+      <div class="pstep">
+        <div class="pnum">03</div>
+        <div><div class="pname">MLP Neural Network</div><div class="ptype">Deep learning · risk score</div></div>
+        <div class="pdesc">Reads the current market regime for your specific portfolio and emits a 0–1 risk score. That score directly tightens or loosens the position bounds the optimizer is allowed to use.</div>
+      </div>
+      <div class="pstep">
+        <div class="pnum">04</div>
+        <div><div class="pname">Markowitz / Modern Portfolio Theory</div><div class="ptype">Optimization · SciPy SLSQP</div></div>
+        <div class="pdesc">Solves for the Max-Sharpe and Min-Variance allocations with Ledoit-Wolf covariance shrinkage, under bounds adapted to the risk score above.</div>
+      </div>
+      <div class="pstep">
+        <div class="pnum">05</div>
+        <div><div class="pname">Rebalancing Engine</div><div class="ptype">Translation layer</div></div>
+        <div class="pdesc">Converts optimal weights into instructions you can act on: BUY $X, SELL $Y, HOLD — measured against the holdings you actually have today.</div>
+      </div>
+      <div class="pstep">
+        <div class="pnum">06</div>
+        <div><div class="pname">Claude AI Assistant</div><div class="ptype">Haiku 4.5 · Anthropic</div></div>
+        <div class="pdesc">Explains the result in plain English, then answers follow-ups and takes commands — "add TSLA", "make it more defensive" — re-running the whole pipeline and reporting what changed.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FEATURES ─── -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="sec-eyebrow">Inside the terminal</div>
+      <h2>Built to be interrogated, not just admired.</h2>
+    </div>
+
+    <div class="fgrid rv">
+      <div class="fcard">
+        <div class="ficon"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M2 12l3.5-4L8 10l5-7" stroke="#3dd68c" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="ftitle">Dollar-denominated actions</div>
+        <div class="fdesc">Not just target weights. Every row tells you the trade amount against your real position, so the output is directly executable.</div>
+      </div>
+      <div class="fcard">
+        <div class="ficon"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="#3dd68c" stroke-width="1.4"/><path d="M8 4.5v3.5l2.5 1.5" stroke="#3dd68c" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+        <div class="ftitle">Scenario compare</div>
+        <div class="fdesc">Every run is snapshotted. Flip between scenarios or open a side-by-side delta table to see exactly what changed and why.</div>
+      </div>
+      <div class="fcard">
+        <div class="ficon"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.2" stroke="#3dd68c" stroke-width="1.3"/><path d="M5 9c.5 1.4 1.6 2.3 3 2.3S10.5 10.4 11 9" stroke="#3dd68c" stroke-width="1.3" stroke-linecap="round"/><circle cx="6" cy="6.4" r=".85" fill="#3dd68c"/><circle cx="10" cy="6.4" r=".85" fill="#3dd68c"/></svg></div>
+        <div class="ftitle">Conversational re-optimization</div>
+        <div class="fdesc">Talk to the portfolio. The Claude assistant edits your ticker set, re-runs the pipeline and explains the new allocation in the same breath.</div>
+      </div>
+      <div class="fcard">
+        <div class="ficon"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M2 13V6M6 13V3M10 13V8M14 13V5" stroke="#3dd68c" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+        <div class="ftitle">288-instrument universe</div>
+        <div class="fdesc">Stocks, sector and factor ETFs, bonds, commodities and crypto ETFs — searchable by symbol or company name.</div>
+      </div>
+      <div class="fcard">
+        <div class="ficon"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M8 1.8l5 2.2v4c0 3.1-2.1 5.3-5 6.2-2.9-.9-5-3.1-5-6.2V4l5-2.2z" stroke="#3dd68c" stroke-width="1.3" stroke-linejoin="round"/></svg></div>
+        <div class="ftitle">Risk-adaptive constraints</div>
+        <div class="fdesc">The MLP's risk score is wired into the optimizer's bounds — a calm regime allows concentration, a volatile one forces diversification.</div>
+      </div>
+      <div class="fcard">
+        <div class="ficon"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M4 2h6l3 3v9H4V2z" stroke="#3dd68c" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 8h4M6 10.5h4" stroke="#3dd68c" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+        <div class="ftitle">Transparent methodology</div>
+        <div class="fdesc">Every model, feature and assumption is documented in an open notebook — including the risk-free rate and the data window used.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MODELS TABLE ─── -->
+<section id="models" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="sec-eyebrow">Under the hood</div>
+      <h2>No black box.</h2>
+      <p class="sec-sub">Every component is a named, inspectable model with a specific job.</p>
+    </div>
+
+    <div class="mtable-wrap rv">
+      <table class="models">
+        <thead>
+          <tr><th>Model</th><th>Type</th><th>Library</th><th>Role</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="m-name">K-Means</td><td><span class="m-tag">Unsupervised</span></td><td>scikit-learn</td><td>Cluster assets by behavioral profile</td></tr>
+          <tr><td class="m-name">Random Forest</td><td><span class="m-tag">Supervised</span></td><td>scikit-learn</td><td>Forecast forward returns per ticker</td></tr>
+          <tr><td class="m-name">MLP</td><td><span class="m-tag">Deep learning</span></td><td>scikit-learn</td><td>Score current market risk (0–1)</td></tr>
+          <tr><td class="m-name">Markowitz / MPT</td><td><span class="m-tag">Optimization</span></td><td>SciPy (SLSQP)</td><td>Solve Max-Sharpe + Min-Variance</td></tr>
+          <tr><td class="m-name">Claude Haiku 4.5</td><td><span class="m-tag">LLM</span></td><td>Anthropic API</td><td>Explain results + conversational re-optimization</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mock-cap" style="text-align:left;margin-top:16px">
+      Universe: 288 instruments · Window: 2021-11-10 → present · Risk-free rate: 5%
+    </div>
+  </div>
+</section>
+
+<!-- ─── HOW THE DEMO WORKS ─── -->
+<section id="demo-how" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head center rv">
+      <div class="sec-eyebrow">Getting access</div>
+      <h2>PortfolioAI is invite-only.</h2>
+      <p class="sec-sub">
+        The terminal isn't publicly available. Access comes through a short walkthrough,
+        so the tool arrives with the context needed to read its output correctly.
+      </p>
+    </div>
+
+    <div class="dsteps rv">
+      <div class="dstep">
+        <div class="dstep-n">STEP 01</div>
+        <div class="dstep-t">Request a demo</div>
+        <div class="dstep-d">Tell me who you are and what you're managing. Takes under a minute — three fields, no sales funnel.</div>
+      </div>
+      <div class="dstep">
+        <div class="dstep-n">STEP 02</div>
+        <div class="dstep-t">Walkthrough</div>
+        <div class="dstep-d">A live session on your own portfolio: we run the pipeline together and go through what each model concluded and why.</div>
+      </div>
+      <div class="dstep">
+        <div class="dstep-n">STEP 03</div>
+        <div class="dstep-t">Your access link</div>
+        <div class="dstep-d">You get a private link to the terminal and can run your own scenarios, with the Claude assistant on hand for follow-ups.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── DEMO FORM ─── -->
+<section class="demo-band" id="demo">
+  <div class="wrap">
+    <div class="demo-grid">
+      <div class="rv">
+        <div class="sec-eyebrow">Request access</div>
+        <h2>Let's run it on your portfolio.</h2>
+        <p class="sec-sub">
+          Send a request and I'll get back to you personally to schedule a walkthrough.
+          Every demo is run live against real positions — yours, or a representative set.
+        </p>
+        <ul class="demo-list">
+          <li><span class="tick"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="#3dd68c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>A live run on your own holdings, not a canned recording</span></li>
+          <li><span class="tick"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="#3dd68c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>A walk through every model's reasoning, end to end</span></li>
+          <li><span class="tick"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="#3dd68c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Your private link to the terminal afterwards</span></li>
+          <li><span class="tick"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="#3dd68c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Direct line for questions — you're talking to the person who built it</span></li>
+        </ul>
+      </div>
+
+      <div class="form-card rv">
+        <div class="form-title">Request a demo</div>
+        <div class="form-sub">Three fields. No credit card, no sales call script.</div>
+        <form id="demo-form" onsubmit="submitDemo(event)">
+          <label class="lbl" for="d-name">Name</label>
+          <input id="d-name" class="inp" type="text" required autocomplete="name" placeholder="Jane Doe"/>
+
+          <label class="lbl" for="d-email">Email</label>
+          <input id="d-email" class="inp" type="email" required autocomplete="email" placeholder="jane@example.com"/>
+
+          <label class="lbl" for="d-type">What best describes you?</label>
+          <select id="d-type" class="inp" required>
+            <option value="Individual investor">Individual investor</option>
+            <option value="Financial advisor">Financial advisor</option>
+            <option value="Fund / institution">Fund / institution</option>
+            <option value="Student">Student</option>
+            <option value="Developer">Developer</option>
+            <option value="Other">Other</option>
+          </select>
+
+          <button id="d-submit" class="submit" type="submit">Request a demo →</button>
+          <div id="d-status" class="form-status"></div>
+          <div class="form-fine">
+            Your details are used only to arrange the demo. No newsletter, no third-party sharing.
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FAQ ─── -->
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="sec-eyebrow">Questions</div>
+      <h2>Before you ask.</h2>
+    </div>
+
+    <div class="faq rv">
+      <details>
+        <summary>Why can't I just sign up?</summary>
+        <div class="faq-body">
+          Because the output is easy to misread. A 0.88 risk score or a "SELL $1,700" line means something
+          specific about the models that produced it, and handing that to someone cold invites bad decisions.
+          The walkthrough exists so you know what the numbers are and — just as importantly — what they aren't.
+        </div>
+      </details>
+      <details>
+        <summary>Is this investment advice?</summary>
+        <div class="faq-body">
+          No. PortfolioAI is a research and educational tool. Its predictions, risk scores and rebalancing
+          suggestions come from statistical models trained on historical data and can be wrong. Nothing here
+          is a recommendation to buy or sell any security, and it is no substitute for a qualified financial
+          professional.
+        </div>
+      </details>
+      <details>
+        <summary>What data does it run on?</summary>
+        <div class="faq-body">
+          A bundled adjusted-close price history covering 288 instruments from 2021-11-10 to the latest refresh,
+          built offline via yfinance. The Sharpe calculations assume a 5% risk-free rate. Because the history
+          is bundled rather than streamed, results are reproducible — the same inputs give the same output.
+        </div>
+      </details>
+      <details>
+        <summary>Does it place trades or connect to my broker?</summary>
+        <div class="faq-body">
+          No. PortfolioAI never touches a brokerage account and has no execution capability. You enter your
+          holdings by hand, and it returns a trade list for you to consider and act on yourself.
+        </div>
+      </details>
+      <details>
+        <summary>What happens to the data I enter?</summary>
+        <div class="faq-body">
+          Holdings you type into the terminal are sent to the optimization API for the duration of the run and
+          are not stored as a portfolio record. Demo requests are stored so I can reply to you. Anonymous usage
+          events are recorded to understand which features are used.
+        </div>
+      </details>
+      <details>
+        <summary>Can I see the methodology?</summary>
+        <div class="faq-body">
+          Yes — the full walk-through, from feature construction through the optimizer's constraints, lives in
+          an open Jupyter notebook, and the codebase is MIT-licensed. Ask during the demo and I'll point you at
+          the relevant sections.
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ─── DISCLAIMER + FOOTER ─── -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="disclaim rv">
+      <div style="flex-shrink:0;margin-top:2px">
+        <svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M8 1.8l6.4 11.4H1.6L8 1.8z" stroke="#f5a623" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.3v3" stroke="#f5a623" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.2" r=".75" fill="#f5a623"/></svg>
+      </div>
+      <div>
+        <div class="disclaim-t">Not investment advice</div>
+        <div class="disclaim-d">
+          PortfolioAI is intended for educational and research purposes only. Predictions, risk scores and
+          rebalancing recommendations are produced by statistical models trained on historical data and may be
+          wrong. Do not use this software to make real investment decisions without consulting a qualified
+          financial professional.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="brand">
+        <svg width="24" height="24" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M28,28 L54,28 A26,26 0 0,1 15.4,51.6 Z" fill="#3dd68c"/>
+          <path d="M28,28 L15.4,51.6 A26,26 0 0,1 2,21.2 Z" fill="#3dd68c" opacity="0.6"/>
+          <path d="M28,28 L2,21.2 A26,26 0 0,1 28,2 Z" fill="#3dd68c" opacity="0.35"/>
+          <path d="M28,28 L28,2 A26,26 0 0,1 54,28 Z" fill="#3dd68c" opacity="0.15"/>
+          <circle cx="28" cy="28" r="13" fill="#0d0f14"/>
+        </svg>
+        <span class="foot-copy">PortfolioAI · Private beta</span>
+      </div>
+      <div class="foot-links">
+        <a href="#how">How it works</a>
+        <a href="#faq">FAQ</a>
+        <a href="mailto:hi@axelpeluso.com">hi@axelpeluso.com</a>
+        <a href="https://github.com/axelpeluso/portfolioai-optimizer" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+    <div class="foot-stack">
+      FastAPI · scikit-learn · SciPy · Claude Haiku 4.5 · Chart.js — MIT licensed
+    </div>
+  </div>
+</footer>
+
+<script>
+const API = 'https://atlantis-production-58a3.up.railway.app';
+const SESSION_ID = 's_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+// Fire-and-forget analytics — never blocks the UI, swallows all errors
+function track(event_type, metadata = null) {
+  try {
+    fetch(`${API}/track`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type, session_id: SESSION_ID, tickers: null, metadata })
+    }).catch(() => {});
+  } catch (_) {}
+}
+track('landing_view', { referrer: document.referrer || null });
+
+// Scroll to the request form and focus it
+function goToForm(source) {
+  track('demo_cta_click', { source });
+  document.getElementById('demo').scrollIntoView({ behavior: 'smooth' });
+  setTimeout(() => document.getElementById('d-name').focus({ preventScroll: true }), 500);
+}
+
+async function submitDemo(ev) {
+  ev.preventDefault();
+  const btn    = document.getElementById('d-submit');
+  const status = document.getElementById('d-status');
+  const name   = document.getElementById('d-name').value.trim();
+  const email  = document.getElementById('d-email').value.trim();
+  const type   = document.getElementById('d-type').value;
+  if (!name || !email) return;
+
+  btn.disabled = true;
+  status.className = 'form-status';
+  status.textContent = 'Sending…';
+
+  try {
+    const res  = await fetch(`${API}/waitlist`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, user_type: type, source: 'landing-demo' })
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (json.success) {
+      status.className = 'form-status ok';
+      status.textContent = "Request received — I'll email you to schedule the walkthrough.";
+      track('demo_request', { user_type: type });
+      document.getElementById('demo-form').reset();
+    } else if (json.error === 'already registered') {
+      status.className = 'form-status ok';
+      status.textContent = "You've already requested a demo — I'll be in touch shortly.";
+    } else {
+      status.className = 'form-status err';
+      status.textContent = 'Something went wrong. Email hi@axelpeluso.com instead.';
+    }
+  } catch (e) {
+    status.className = 'form-status err';
+    status.textContent = 'Something went wrong. Email hi@axelpeluso.com instead.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Reveal-on-scroll
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.rv').forEach(el => io.observe(el));
+</script>
+
+</body>
+</html>
