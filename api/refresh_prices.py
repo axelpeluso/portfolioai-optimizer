@@ -30,7 +30,7 @@ import json
 import os
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -51,6 +51,153 @@ def load_tickers(path: Path) -> list[str]:
     return sorted(data.keys() if isinstance(data, dict) else data)
 
 
+def preflight() -> int:
+    """Check reachability before grinding through 300 downloads.
+
+    yfinance authenticates against fc.yahoo.com before fetching anything, so
+    when that host fails to resolve EVERY download fails with a DNS error that
+    looks like the tickers are bad. It is a legacy host that does not resolve
+    on plenty of ISPs and resolvers, while the actual data hosts are fine.
+
+    Returns 0 = good, 1 = no connectivity at all, 2 = data hosts fine but the
+    auth host is unresolvable.
+    """
+    import socket
+
+    def resolves(host: str) -> bool:
+        try:
+            socket.getaddrinfo(host, 443)
+            return True
+        except OSError:
+            return False
+
+    data_ok = resolves("query1.finance.yahoo.com") or resolves("query2.finance.yahoo.com")
+    auth_ok = resolves("fc.yahoo.com")
+
+    log(f"  query*.finance.yahoo.com : {'ok' if data_ok else 'UNRESOLVABLE'}")
+    log(f"  fc.yahoo.com (auth)      : {'ok' if auth_ok else 'UNRESOLVABLE'}")
+
+    if not data_ok:
+        log("\n  No route to Yahoo's data hosts — this machine has no working DNS")
+        log("  or internet access right now. Nothing to do but fix that first.")
+        return 1
+    if not auth_ok:
+        log("\n  Data hosts reachable, but yfinance's auth host is not. This is a")
+        log("  known yfinance issue, not a problem with your tickers. Options:")
+        log("    1. pip install -U yfinance     (newer versions avoid this host)")
+        log("    2. switch DNS to 1.1.1.1 or 8.8.8.8")
+        return 2
+    return 0
+
+
+# ── source A: Yahoo's chart endpoint, no auth handshake ───────
+# yfinance authenticates against fc.yahoo.com before every download. That host
+# is unresolvable on many networks, and when it fails yfinance reports it as if
+# the tickers were bad. This endpoint is what yfinance ultimately calls anyway,
+# and it needs no cookie or crumb — so it works wherever the data hosts resolve.
+
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+
+
+def download_chart_one(sym: str, p1: int, p2: int,
+                       retries: int, pause: float) -> pd.Series | None:
+    """Adjusted daily closes for one symbol. None means 'no data for this one'."""
+    from urllib.error import HTTPError, URLError
+    from urllib.parse import quote
+    from urllib.request import Request, urlopen
+
+    url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(sym)}"
+           f"?period1={p1}&period2={p2}&interval=1d&events=div%2Csplit")
+
+    for attempt in range(1, retries + 1):
+        try:
+            with urlopen(Request(url, headers={"User-Agent": _UA}), timeout=30) as r:
+                payload = json.load(r)
+
+            chart = payload.get("chart") or {}
+            if chart.get("error"):
+                raise RuntimeError(chart["error"].get("description", "api error"))
+            result = (chart.get("result") or [None])[0]
+            if not result:
+                raise RuntimeError("empty result")
+
+            ts  = result.get("timestamp") or []
+            ind = result.get("indicators") or {}
+            # Prefer the split/dividend-adjusted series; fall back to raw close.
+            adj = ((ind.get("adjclose") or [{}])[0] or {}).get("adjclose")
+            if adj is None:
+                adj = ((ind.get("quote") or [{}])[0] or {}).get("close")
+            if not ts or not adj:
+                raise RuntimeError("no price series")
+
+            idx = pd.to_datetime([datetime.fromtimestamp(t, timezone.utc).date()
+                                  for t in ts])
+            s = pd.Series(adj, index=idx, name=sym, dtype="float64")
+            return s[~s.index.duplicated(keep="last")]
+
+        except HTTPError as e:
+            if e.code in (404, 422):
+                return None                       # delisted / unknown — do not retry
+            if e.code == 429 and attempt < retries:
+                time.sleep(pause * 4 * attempt)   # rate limited: back off hard
+                continue
+            if attempt >= retries:
+                raise
+            time.sleep(pause * attempt)
+        except (URLError, TimeoutError, RuntimeError, ValueError, KeyError):
+            if attempt >= retries:
+                raise
+            time.sleep(pause * attempt)
+    return None
+
+
+def fetch_all_chart(tickers: list[str], start: str, end: str, workers: int,
+                    retries: int, pause: float) -> pd.DataFrame:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    p1 = int(datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+    p2 = int(datetime.strptime(end,   "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+
+    series: dict[str, pd.Series] = {}
+    empty:  list[str] = []
+    errors: dict[str, str] = {}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(download_chart_one, t, p1, p2, retries, pause): t
+                   for t in tickers}
+        for n, fut in enumerate(as_completed(futures), 1):
+            t = futures[fut]
+            try:
+                s = fut.result()
+                if s is None or s.empty:
+                    empty.append(t)
+                else:
+                    series[t] = s
+            except Exception as e:                # noqa: BLE001 — collected below
+                errors[t] = f"{type(e).__name__}: {e}"
+            if n % 25 == 0 or n == len(tickers):
+                log(f"  {n}/{len(tickers)} fetched "
+                    f"({len(series)} ok, {len(empty)} empty, {len(errors)} error)")
+
+    if empty:
+        log(f"\n  No data returned (likely delisted/renamed) — {len(empty)}: "
+            f"{', '.join(sorted(empty))}")
+    if errors:
+        log(f"\n  Errored — {len(errors)}:")
+        for t, e in sorted(errors.items())[:15]:
+            log(f"    {t}: {e}")
+        if len(errors) > 15:
+            log(f"    … and {len(errors) - 15} more")
+    if not series:
+        return pd.DataFrame()
+
+    out = pd.concat(series.values(), axis=1).sort_index()
+    out.index = pd.to_datetime(out.index).tz_localize(None).normalize()
+    return out
+
+
+# ── source B: yfinance ────────────────────────────────────────
 def download_batch(symbols: list[str], start: str, end: str,
                    retries: int, pause: float) -> pd.DataFrame:
     """Download adjusted closes for one batch, retrying transient failures."""
@@ -169,6 +316,11 @@ def main() -> int:
                    help="only pull from this date (faster; does not heal older gaps)")
     p.add_argument("--full", action="store_true",
                    help="ignore the existing CSV instead of merging into it")
+    p.add_argument("--source", choices=("chart", "yfinance"), default="chart",
+                   help="chart = Yahoo's chart endpoint (no auth host, default); "
+                        "yfinance = the library, which needs fc.yahoo.com to resolve")
+    p.add_argument("--workers", type=int, default=6,
+                   help="parallel requests for --source chart")
     p.add_argument("--batch-size", type=int, default=40)
     p.add_argument("--retries", type=int, default=3)
     p.add_argument("--pause", type=float, default=2.0,
@@ -177,7 +329,26 @@ def main() -> int:
                    help="decimal places to store (default 4 — halves the file size)")
     p.add_argument("--min-coverage", type=float, default=0.90)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--check", action="store_true",
+                   help="only run the connectivity preflight, then exit")
+    p.add_argument("--skip-preflight", action="store_true")
     args = p.parse_args()
+
+    if not args.skip_preflight:
+        log("Connectivity check…")
+        pf = preflight()
+        # The chart endpoint needs no auth host, so pf == 2 is irrelevant to it.
+        fatal = (pf == 1) or (pf == 2 and args.source == "yfinance")
+        if args.check:
+            return 1 if fatal else 0
+        if fatal:
+            if pf == 2:
+                log("\n  --source chart avoids this host entirely (it is the default).")
+            return 1
+        if pf == 2:
+            log("  (irrelevant for --source chart — continuing)\n")
+    elif args.check:
+        return 0
 
     tickers = load_tickers(args.tickers_file)
     log(f"Tickers: {len(tickers)} from {args.tickers_file.name}")
@@ -189,10 +360,15 @@ def main() -> int:
         coverage_report(old, "existing")
 
     start = args.since or args.start
-    end   = (date.today() + timedelta(days=1)).isoformat()   # yfinance end is exclusive
-    log(f"\nDownloading {start} -> {end} …")
+    end   = (date.today() + timedelta(days=1)).isoformat()   # end is exclusive
+    log(f"\nDownloading {start} -> {end} via {args.source} …")
 
-    fresh = fetch_all(tickers, start, end, args.batch_size, args.retries, args.pause)
+    if args.source == "chart":
+        fresh = fetch_all_chart(tickers, start, end, args.workers,
+                                args.retries, args.pause)
+    else:
+        fresh = fetch_all(tickers, start, end, args.batch_size,
+                          args.retries, args.pause)
     if fresh.empty:
         log("\nFAILED: no data downloaded at all. Existing file left untouched.")
         return 1
