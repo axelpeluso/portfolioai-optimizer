@@ -419,6 +419,38 @@ tbody td:nth-child(2){text-align:left}
 .chat-send{padding:9px 16px;border-radius:8px;border:1px solid #3dd68c;background:rgba(61,214,140,.1);color:#3dd68c;font-size:13px;font-family:var(--mono);cursor:pointer}
 .chat-send:disabled{opacity:.5;cursor:default}
 
+/* ─── OPTIMIZER MODES ─── */
+.opt-row{display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer}
+.opt-row input{accent-color:var(--g);cursor:pointer;width:14px;height:14px;flex-shrink:0}
+.opt-row input:disabled{cursor:default;opacity:.45}
+.opt-name{font-size:12px;color:var(--t2)}
+.opt-row input:checked + .opt-name{color:var(--t1)}
+.opt-detail{padding:2px 0 6px 22px}
+.opt-sel{width:100%;background:var(--s3);border:1px solid var(--line2);border-radius:6px;padding:6px 8px;color:var(--t1);font-family:var(--mono);font-size:11px;outline:none;cursor:pointer}
+.opt-sel:focus{border-color:var(--g)}
+.opt-help{font-size:10.5px;color:var(--t3);line-height:1.5;margin:6px 0 0;padding-left:22px}
+.opt-rates-btn{width:100%;margin-top:10px;padding:7px;border-radius:7px;background:none;border:1px solid var(--line2);color:var(--t2);font-family:var(--sans);font-size:11.5px;cursor:pointer;transition:all .15s}
+.opt-rates-btn:hover{border-color:var(--g);color:var(--g)}
+.opt-rates{margin-top:9px;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--s2)}
+.opt-rates .opt-help{padding-left:0}
+.rate-lbl{display:block;font-family:var(--mono);font-size:10px;color:var(--t3);margin:8px 0 4px;letter-spacing:.3px}
+.rate-inp{width:100%;background:var(--s3);border:1px solid var(--line2);border-radius:6px;padding:6px 8px;color:var(--t1);font-family:var(--mono);font-size:11px;outline:none}
+.rate-inp:focus{border-color:var(--g)}
+
+/* ─── TAX DISCLOSURE ─── */
+.tax-banner{display:flex;gap:13px;align-items:flex-start;background:var(--abb);border:1px solid rgba(245,166,35,.22);border-radius:10px;padding:14px 17px}
+.tax-banner-t{font-size:12.5px;font-weight:600;color:var(--amb);margin-bottom:5px;letter-spacing:.2px}
+.tax-banner-d{font-size:12.5px;color:var(--t2);line-height:1.6}
+.tax-banner-d b{color:var(--t1);font-weight:500}
+.tax-est{margin-top:7px;font-family:var(--mono);font-size:11.5px;color:var(--t2)}
+.tax-line{margin-top:4px;display:flex;flex-direction:column;gap:1px;align-items:flex-end}
+.tax-gain{font-family:var(--mono);font-size:10px;color:var(--amb);white-space:nowrap}
+.tax-gain.loss{color:var(--g)}
+.tax-split{font-family:var(--mono);font-size:9.5px;color:var(--t3);white-space:nowrap}
+.tax-acct{font-size:9.5px;color:var(--t3);white-space:nowrap}
+.tax-unknown{font-family:var(--mono);font-size:9.5px;color:var(--t4);white-space:nowrap}
+.tax-chip{display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:9px;background:var(--s3);border:1px solid var(--line);color:var(--t3);white-space:nowrap}
+
 /* ─── BROKERAGE ─── */
 .bk-connect{
   width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
@@ -634,6 +666,62 @@ tbody td:nth-child(2){text-align:left}
         <div class="h-grid" id="hgrid"></div>
       </div>
 
+      <!-- OPTIMIZER MODES (both off by default) -->
+      <div class="aside-block">
+        <div class="aside-label">Optimizer</div>
+
+        <label class="opt-row">
+          <input type="checkbox" id="opt-minimize" onchange="optToggle()">
+          <span class="opt-name">Minimize trading</span>
+        </label>
+        <div class="opt-detail" id="opt-min-detail" style="display:none">
+          <select id="opt-strength" class="opt-sel">
+            <option value="light">Light</option>
+            <option value="moderate" selected>Moderate</option>
+            <option value="strong">Strong</option>
+          </select>
+          <div class="opt-help">
+            Penalizes moving away from your current holdings. Fewer trades, and a
+            lower theoretical Sharpe in exchange.
+          </div>
+        </div>
+
+        <label class="opt-row">
+          <input type="checkbox" id="opt-taxaware" disabled onchange="optToggle()">
+          <span class="opt-name">Tax-aware selling</span>
+        </label>
+        <div class="opt-help" id="opt-tax-help">
+          Needs your tax rates and imported holdings — enter rates below to enable.
+        </div>
+
+        <button class="opt-rates-btn" id="opt-rates-btn" onclick="toggleRates()">
+          Enter my tax rates
+        </button>
+        <div class="opt-rates" id="opt-rates" style="display:none">
+          <div class="opt-help" style="margin:0 0 8px">
+            Your own rates. Nothing is assumed and no default exists — figures are
+            illustrative and are not tax advice.
+          </div>
+          <label class="rate-lbl">Region</label>
+          <select id="rate-region" class="opt-sel" onchange="ratesChanged()">
+            <option value="us">United States</option>
+            <option value="ca">Canada</option>
+          </select>
+          <div id="rate-us">
+            <label class="rate-lbl">Short-term rate %</label>
+            <input id="rate-st" class="rate-inp" type="number" min="0" max="100" step="0.1" oninput="ratesChanged()">
+            <label class="rate-lbl">Long-term rate %</label>
+            <input id="rate-lt" class="rate-inp" type="number" min="0" max="100" step="0.1" oninput="ratesChanged()">
+          </div>
+          <div id="rate-ca" style="display:none">
+            <label class="rate-lbl">Inclusion rate %</label>
+            <input id="rate-incl" class="rate-inp" type="number" min="0" max="100" step="0.1" oninput="ratesChanged()">
+            <label class="rate-lbl">Marginal rate %</label>
+            <input id="rate-marg" class="rate-inp" type="number" min="0" max="100" step="0.1" oninput="ratesChanged()">
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <div id="err"></div>
@@ -675,6 +763,9 @@ tbody td:nth-child(2){text-align:left}
           <button id="snap-compare-btn" class="snap-compare-btn" onclick="toggleCompare()" disabled>Compare</button>
         </div>
         <div id="compare-panel" class="compare-panel" style="display:none"></div>
+
+        <!-- TAX / TURNOVER DISCLOSURE -->
+        <div id="tax-banner" class="tax-banner fade" style="display:none"></div>
 
         <!-- STAT ROW -->
         <div class="stat-row fade d1">
@@ -830,6 +921,9 @@ tbody td:nth-child(2){text-align:left}
 
         <div class="results-disclaimer">
           For research and educational purposes only — not investment advice.
+          Tax figures are illustrative, derived from broker-supplied data that may be
+          incomplete, and are not tax advice. State, provincial and other surtaxes
+          are not modelled.
         </div>
 
       </div><!-- /results -->
@@ -960,6 +1054,7 @@ const PALETTE = ['#3dd68c','#5b9cf6','#f5a623','#f4645f','#a78bfa','#22d3ee','#8
 let tickers = [...DEF.tickers], cB = null, cA = null;
 let si = 0, stimer = null;
 let _lastData = null;
+let _lastTax  = null;   // tax disclosure for the run currently on screen
 let chatHistory = [];   // {role:'user'|'assistant', content:string}
 let snapshots = [], snapSeq = 0, activeSnapId = null, compareOn = false;   // scenario history
 const SESSION_ID = 's_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -1266,7 +1361,15 @@ async function go() {
   stimer = setInterval(() => { si = (si+1)%STEPS.length; document.getElementById('lstep').textContent = STEPS[si]; }, 3000);
 
   try {
-    const res  = await fetch(`${API}/optimize`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({tickers, current_holdings:holdings}) });
+    const body = { tickers, current_holdings: holdings };
+    const mode = document.getElementById('opt-minimize');
+    if (mode && mode.checked) body.minimize_trading = document.getElementById('opt-strength').value;
+    if (taxContext()) {
+      body.tax_context = taxContext();
+      const ta = document.getElementById('opt-taxaware');
+      if (ta && ta.checked && !ta.disabled) body.tax_aware = true;
+    }
+    const res  = await fetch(`${API}/optimize`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const json = await res.json();
     if (!res.ok) throw new Error(json.detail || 'API error');
     render(json.data, holdings);
@@ -1289,6 +1392,8 @@ async function go() {
 // ── RENDER ──
 function render(data, holdings) {
   _lastData = data;
+  // Set before the table is built: taxLine()/taxChip() read it per row.
+  _lastTax  = data.tax || null;
   // Reset Claude panel from any previous run
   document.getElementById('claude-card').style.display = 'none';
   document.getElementById('claude-out').textContent = '';
@@ -1354,13 +1459,13 @@ function render(data, holdings) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="sym">${t}</span></td>
-      <td><span class="clust"><span class="cdot ${clustDot(r.cluster)}"></span>${r.cluster}</span></td>
+      <td><span class="clust"><span class="cdot ${clustDot(r.cluster)}"></span>${r.cluster}</span>${taxChip(t)}</td>
       <td><span class="${sigCls}">${sigTxt}</span></td>
       <td class="mono-val">$${(r.current_value).toLocaleString('en',{maximumFractionDigits:0})}</td>
       <td class="mono-dim">${(r.current_weight*100).toFixed(1)}%</td>
       <td class="mono-g">${(r.optimal_weight*100).toFixed(1)}%</td>
       <td class="mono-val">$${r.target_value.toLocaleString('en',{maximumFractionDigits:0})}</td>
-      <td class="${amtCls}">${amtStr}${tradeSplit(t, amt)}</td>
+      <td class="${amtCls}">${amtStr}${tradeSplit(t, amt)}${taxLine(t, amt)}</td>
       <td>${badge}</td>`;
     tbody.appendChild(tr);
   });
@@ -1368,6 +1473,8 @@ function render(data, holdings) {
   // The caption only earns its place when a split is actually on screen.
   const cap = document.getElementById('attr-caption');
   if (cap) cap.style.display = hasAttribution() ? '' : 'none';
+
+  renderTaxBanner(data);
 
   document.getElementById('results').style.display = 'flex';
   document.getElementById('results').style.flexDirection = 'column';
@@ -1949,6 +2056,27 @@ function bkImport() {
     }
   });
 
+  // Cost basis for tax disclosure. Sent back on the next /optimize so the
+  // server can compute gains — it is not stored anywhere.
+  bkTaxData = {};
+  bkAccountMeta = {};
+  (bkPositions.accounts || []).forEach(a => {
+    bkAccountMeta[a.id] = { raw_type: a.raw_type, account_category: a.account_category,
+                            currency: a.currency, name: a.name };
+  });
+  picked.forEach(p => {
+    if (!p.tax) return;
+    bkTaxData[p.symbol] = {
+      price: p.tax.price, units: p.tax.units,
+      tax_lots: p.tax.tax_lots || [],
+      average_purchase_price: p.tax.average_purchase_price,
+      // Single-account holdings attribute cleanly; mixed ones fall back to the
+      // largest, and the server reports the account type it actually matched.
+      _account: (p.accounts && p.accounts[0]) ? p.accounts[0].id : null
+    };
+  });
+  ratesChanged();   // may now enable tax-aware selling
+
   const total = picked.reduce((a, p) => a + p.value, 0);
   document.getElementById('tot').value = Math.round(total);
   renderH();                                    // rebuild the holdings grid
@@ -2004,6 +2132,154 @@ function hasAttribution() {
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ══ TAX DISCLOSURE + OPTIMIZER MODES ══════════════════════════
+// Facts by default; a dollar figure only from rates the user typed themselves.
+// There are deliberately no default rates anywhere in this file.
+
+let bkTaxData = {};        // symbol -> {price, units, tax_lots, average_purchase_price}
+let bkAccountMeta = {};    // account id -> {raw_type, currency, …}
+
+function optToggle() {
+  const min = document.getElementById('opt-minimize');
+  document.getElementById('opt-min-detail').style.display = min.checked ? '' : 'none';
+}
+
+function toggleRates() {
+  const box = document.getElementById('opt-rates');
+  const open = box.style.display === 'none';
+  box.style.display = open ? '' : 'none';
+  document.getElementById('opt-rates-btn').textContent =
+    open ? 'Hide tax rates' : 'Enter my tax rates';
+}
+
+function ratesChanged() {
+  const us = document.getElementById('rate-region').value === 'us';
+  document.getElementById('rate-us').style.display = us ? '' : 'none';
+  document.getElementById('rate-ca').style.display = us ? 'none' : '';
+  // Tax-aware selling is gated on rates: without them it would have to invent
+  // a number, and the whole design says we never do that.
+  const ta = document.getElementById('opt-taxaware');
+  const ok = !!taxRates() && Object.keys(bkTaxData).length > 0;
+  ta.disabled = !ok;
+  if (!ok) ta.checked = false;
+  document.getElementById('opt-tax-help').textContent = ok
+    ? 'Discourages selling positions carrying large taxable gains.'
+    : (Object.keys(bkTaxData).length
+        ? 'Enter your tax rates above to enable.'
+        : 'Needs your tax rates and imported holdings — enter rates below to enable.');
+}
+
+function taxRates() {
+  const region = (document.getElementById('rate-region') || {}).value;
+  const num = id => { const v = parseFloat((document.getElementById(id)||{}).value); return isNaN(v) ? null : v/100; };
+  if (region === 'ca') {
+    const inc = num('rate-incl'), mar = num('rate-marg');
+    return (inc !== null && mar !== null) ? { inclusion_rate: inc, marginal_rate: mar } : null;
+  }
+  const st = num('rate-st'), lt = num('rate-lt');
+  return (st !== null && lt !== null) ? { short_term_rate: st, long_term_rate: lt } : null;
+}
+
+// Only sent when a brokerage import actually supplied cost basis.
+function taxContext() {
+  if (!Object.keys(bkTaxData).length) return null;
+  const ctx = { positions: {}, accounts: bkAccountMeta };
+  tickers.forEach(t => { if (bkTaxData[t]) ctx.positions[t] = bkTaxData[t]; });
+  if (!Object.keys(ctx.positions).length) return null;
+  const r = taxRates();
+  if (r) ctx.rates = r;
+  return ctx;
+}
+
+// ── rendering ──
+function money(v, dp) {
+  return '$' + Math.abs(v).toLocaleString('en', { maximumFractionDigits: dp === undefined ? 0 : dp });
+}
+
+// Per-row tax facts under a trade amount.
+function taxLine(symbol, amount) {
+  const t = (_lastTax && _lastTax.per_symbol) ? _lastTax.per_symbol[symbol] : null;
+  if (!t) return '';
+  if (t.sheltered === true) {
+    return `<div class="tax-line"><span class="tax-acct">${esc(t.account)}</span></div>`;
+  }
+  if (amount >= 0 || !t.sale) {
+    return t.sheltered === null
+      ? `<div class="tax-line"><span class="tax-unknown">${esc(t.account)}</span></div>` : '';
+  }
+  const s = t.sale;
+  if (s.fidelity === 'none') {
+    return `<div class="tax-line"><span class="tax-unknown">cost basis unavailable</span>
+            <span class="tax-acct">${esc(t.account)}</span></div>`;
+  }
+  const loss = s.gain < 0;
+  let html = `<div class="tax-line"><span class="tax-gain${loss ? ' loss' : ''}">`
+           + `realizes ${loss ? '−' : ''}${money(s.gain)} ${loss ? 'loss' : 'gain'}</span>`;
+  // Only claim a split when lots actually gave us one.
+  if (s.short_term !== null && s.short_term !== undefined && t.holding_period_matters) {
+    html += `<span class="tax-split">${money(s.short_term)} &lt;1yr · ${money(s.long_term)} &gt;1yr</span>`;
+  } else if (s.fidelity === 'average') {
+    html += `<span class="tax-split">holding period unknown</span>`;
+  }
+  html += `<span class="tax-acct">${esc(t.account)}</span></div>`;
+  return html;
+}
+
+// Asset-character chip in the cluster column (REIT, bond fund, …).
+function taxChip(symbol) {
+  const t = (_lastTax && _lastTax.per_symbol) ? _lastTax.per_symbol[symbol] : null;
+  if (!t || !t.profile || t.profile.generic) return '';
+  return `<span class="tax-chip" title="${esc(t.profile.note || t.profile.income)}">${esc(t.profile.label)}</span>`;
+}
+
+function renderTaxBanner(data) {
+  const el = document.getElementById('tax-banner');
+  if (!el) return;
+  const tx = data.tax;
+  const modes = data.modes || {};
+  const sells = Object.values(data.rebalancing).reduce((a, r) => a + (r.trade_amount < 0 ? -r.trade_amount : 0), 0);
+  const turnover = data.total_value ? (sells / data.total_value * 100) : 0;
+
+  // Turnover needs no tax data at all, so it is always available — and it is
+  // the number most likely to make someone pause before acting.
+  const heavy = turnover >= 25;
+  if (!tx && !heavy) { el.style.display = 'none'; return; }
+
+  let body = `This rebalance sells <b>${money(sells)}</b>, turning over `
+           + `<b>${turnover.toFixed(1)}%</b> of your portfolio.`;
+
+  if (tx && tx.summary) {
+    const s = tx.summary;
+    if (s.realized_gain !== null && s.realized_gain !== undefined) {
+      body += ` It realizes about <b>${money(s.realized_gain)}</b> in gains across taxable accounts`;
+      if (s.short_term) body += ` (${money(s.short_term)} short-term)`;
+      body += '.';
+    }
+    if (s.positions_without_basis) {
+      body += ` ${s.positions_without_basis} position(s) had no cost basis from the brokerage, so they are not counted.`;
+    }
+    if (s.all_sheltered) body += ' All holdings are in tax-sheltered accounts.';
+  }
+  if (modes.minimize_trading) {
+    body += ` <b>Minimize trading</b> is on (${esc(modes.minimize_trading)})`
+          + (modes.tax_aware ? ' with tax-aware selling.' : '.');
+  }
+
+  let est = '';
+  if (tx && tx.estimate) {
+    est = `<div class="tax-est">Illustrative at your rates: ~${money(tx.estimate.estimate)}`
+        + ` — your figures, not a calculation of what you owe.</div>`;
+  }
+
+  el.innerHTML = `
+    <div style="flex-shrink:0;margin-top:2px">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1.8l6.4 11.4H1.6L8 1.8z" stroke="#f5a623" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.3v3" stroke="#f5a623" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.2" r=".75" fill="#f5a623"/></svg>
+    </div>
+    <div><div class="tax-banner-t">Before you act</div>
+      <div class="tax-banner-d">${body}</div>${est}</div>`;
+  el.style.display = 'flex';
 }
 
 // ══ GUIDED TOUR ═══════════════════════════════════════════════
@@ -2261,6 +2537,7 @@ if (window.ResizeObserver) {
 renderChips();
 loadCatalog();
 bkInit();
+ratesChanged();   // sets the tax-aware gate + help text from a cold start
 document.addEventListener('click', e => { if (!e.target.closest('.add-wrap')) acClose(); });
 tourReconcileState();
 // Wait for bkInit's status call so the brokerage tour step reflects reality —

@@ -80,9 +80,13 @@ Final Project/
 │   ├── main.py                 ← FastAPI app + routes (optimize, explain, chat, waitlist, …)
 │   ├── optimizer.py            ← ML + MPT pipeline
 │   ├── brokerage.py            ← SnapTrade wrapper + position reconciliation
+│   ├── tax.py                  ← tax disclosure (facts, never a bill)
+│   ├── tax_profiles.json       ← hand-verified asset tax character (REIT/bond/…)
 │   ├── refresh_prices.py       ← rebuild prices.csv from Yahoo (see workflow)
 │   ├── test_api.py             ← pytest smoke tests for the core endpoints
 │   ├── test_snaptrade.py       ← reconciliation + auth-gate tests
+│   ├── test_tax.py             ← tax disclosure tests
+│   ├── test_optimizer_modes.py ← opt-in modes + default-off equivalence
 │   ├── prices.csv              ← bundled adjusted-close history (288 tickers)
 │   ├── tickers.json            ← symbol → company name map (for autocomplete)
 │   ├── requirements.txt        ← Python deps (deployment)
@@ -258,6 +262,60 @@ expiry cleanup): [`docs/snaptrade-setup.md`](docs/snaptrade-setup.md).
 
 > ⏱️ Every imported portfolio is a unique ticker set, so it always misses the
 > model cache — expect ~40s for a 15-ticker run.
+
+---
+
+## 🧾 Tax disclosure
+
+The rebalancing engine had no tax awareness at all: it compared target dollars to
+current dollars and emitted BUY/SELL. That was fine for typed-in hypotheticals
+and not fine once the app started reading real brokerage accounts.
+
+The line drawn throughout is **facts vs. estimates**:
+
+- *Fact* — "this SELL realizes $1,410 of gain, $820 from lots held under a year."
+  Computed from broker-supplied cost basis. Shown by default.
+- *Estimate* — "you owe $340." Needs bracket, filing status and residency.
+  Only ever produced from rates **the user types in**, and labelled illustrative.
+  There are no default rates anywhere in the codebase.
+
+Safety properties that are enforced by tests, not convention:
+
+- An unrecognised account type reports "not identified" — **never** "taxable".
+- Without tax lots we report the gain but **no** short/long split, rather than
+  inventing one.
+- Holding-period language only appears where it applies: US taxable accounts.
+  Canadian accounts get inclusion-rate wording, since Canada has no
+  short/long distinction.
+
+Turnover is always shown, because it needs no tax data and is the number most
+likely to make someone pause — the default portfolio turns over **53%**.
+
+### Opt-in optimizer modes
+
+Both **off by default**, and with both off the optimizer is provably identical to
+before the feature existed (`test_optimizer_modes.py` pins it to golden weights).
+
+| Mode | Effect |
+|---|---|
+| **Minimize trading** | `maximize Sharpe − λ·Σ(wᵢ − wᵢ_current)²`. Named for what it does; needs no tax data. |
+| **Tax-aware selling** | Same mechanism, per-asset weights from embedded gain. Requires the user's own rates, so it stays disabled until they are entered. |
+
+Measured on the default portfolio:
+
+| Mode | Turnover | Sharpe |
+|---|---:|---:|
+| off | 53.3% | 0.969 |
+| light | 48.8% | 0.956 |
+| moderate | 26.7% | 0.799 |
+| strong | 15.1% | 0.694 |
+
+The trade-off is disclosed in both directions — a lower theoretical Sharpe is the
+price of trading less.
+
+**Not in scope:** recommending which account to trade in, automatic lot selection,
+and state/provincial/NIIT/AMT treatment. Those are named as excluded rather than
+approximated.
 
 ---
 
