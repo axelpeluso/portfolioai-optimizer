@@ -69,12 +69,16 @@ def client():
             "SNAPTRADE_CONSUMER_KEY)."
         )
     try:
-        from snaptrade_client import SnapTrade
+        from snaptrade_client import SnapTrade, SnapTradeAuth
     except ImportError:
         raise SnapTradeNotConfigured(
             "snaptrade-python-sdk not installed. Add it to requirements.txt."
         )
-    _client = SnapTrade(client_id=client_id, consumer_key=consumer_key)
+    # v13 takes an auth object; passing client_id/consumer_key directly raises
+    # TypeError (they survive in the signature only as deprecated None-typed
+    # placeholders). Caught by the first real run, not by any mocked test.
+    _client = SnapTrade(auth=SnapTradeAuth.commercial_api_key(
+        client_id=client_id, consumer_key=consumer_key))
     return _client
 
 

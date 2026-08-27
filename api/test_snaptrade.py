@@ -5,10 +5,37 @@ No network and no SnapTrade SDK required: reconciliation is pure, and the route
 tests only need to prove the auth gate rejects unauthenticated callers before
 any brokerage call is attempted. Run with:  pytest -q   (from api/)
 """
+import pytest
 from fastapi.testclient import TestClient
 
 import main
 import brokerage as st
+
+
+# ── SDK contract ──────────────────────────────────────────────
+def test_client_construction_matches_the_installed_sdk(monkeypatch):
+    """Construir el cliente de verdad, no un mock.
+
+    v13 exige `auth=SnapTradeAuth.commercial_api_key(...)`; pasar
+    client_id/consumer_key sueltos lanza TypeError. Todos los tests con mocks
+    pasaban igual, y el fallo solo aparecio en la primera ejecucion real.
+    """
+    pytest.importorskip("snaptrade_client")
+    monkeypatch.setenv("SNAPTRADE_CLIENT_ID", "TEST-ID")
+    monkeypatch.setenv("SNAPTRADE_CONSUMER_KEY", "k" * 50)
+    monkeypatch.setattr(st, "_client", None)      # evitar el cache del modulo
+
+    client = st.client()
+    assert hasattr(client, "authentication")
+    assert hasattr(client, "account_information")
+    # Los metodos que la app llama tienen que existir con estos nombres exactos.
+    for name in ("register_snap_trade_user", "delete_snap_trade_user",
+                 "login_snap_trade_user"):
+        assert hasattr(client.authentication, name), name
+    for name in ("list_user_accounts", "get_all_account_positions",
+                 "get_user_account_balance"):
+        assert hasattr(client.account_information, name), name
+    st._client = None
 
 client = TestClient(main.app)
 
