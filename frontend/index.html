@@ -444,7 +444,28 @@ tbody td:nth-child(2){text-align:left}
   background:#12151c;border:1px solid rgba(255,255,255,.1);border-radius:16px;
   padding:26px 24px 22px;box-shadow:0 20px 60px rgba(0,0,0,.6);
 }
+.bk-accts{margin-bottom:14px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.bk-accts-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:9px 12px;background:var(--s2);border-bottom:1px solid var(--line)}
+.bk-accts-head span:first-child{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--t3)}
+.bk-accts-hint{font-size:10.5px;color:var(--t3);font-style:italic}
+.bk-acct{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+.bk-acct:last-child{border-bottom:none}
+.bk-acct:hover{background:var(--s2)}
+.bk-acct input{accent-color:var(--g);cursor:pointer;flex-shrink:0;width:14px;height:14px}
+.bk-acct-name{font-size:12px;color:var(--t1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-acct-broker{font-size:10.5px;color:var(--t3)}
+.bk-acct-val{font-family:var(--mono);font-size:11.5px;color:var(--t2)}
+.bk-acct-ccy{font-family:var(--mono);font-size:10px;color:var(--t3);min-width:30px;text-align:right}
+.bk-src{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}
+.bk-src-tag{font-size:9.5px;color:var(--t3);background:var(--s3);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.bk-rowmain{display:flex;align-items:center;gap:10px;width:100%}
+.bk-rowwrap{flex:1;min-width:0}
 .bk-notes{margin-bottom:14px;display:flex;flex-direction:column;gap:6px}
+/* Trade attribution in the results table */
+.trade-split{margin-top:4px;display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.trade-split-row{font-family:var(--mono);font-size:10px;color:var(--t3);white-space:nowrap}
+.trade-split-row b{color:var(--t2);font-weight:400}
+.attr-caption{padding:10px 18px 0;font-size:11px;color:var(--t3);font-style:italic;line-height:1.5}
 .bk-note-item{
   font-size:11.5px;color:var(--amb);line-height:1.5;
   background:var(--abb);border:1px solid rgba(245,166,35,.2);
@@ -456,7 +477,7 @@ tbody td:nth-child(2){text-align:left}
 .bk-selbtn{background:none;border:none;color:var(--g);font-family:var(--sans);font-size:11.5px;cursor:pointer;padding:0}
 .bk-selbtn:hover{text-decoration:underline}
 .bk-list{border:1px solid var(--line);border-radius:9px;overflow:hidden;max-height:290px;overflow-y:auto}
-.bk-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+.bk-row{display:flex;flex-direction:column;gap:4px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
 .bk-row:last-child{border-bottom:none}
 .bk-row:hover{background:var(--s2)}
 .bk-row input{accent-color:var(--g);cursor:pointer;flex-shrink:0;width:14px;height:14px}
@@ -788,6 +809,11 @@ tbody td:nth-child(2){text-align:left}
               <tbody id="tbody"></tbody>
             </table>
           </div>
+          <div class="attr-caption" id="attr-caption" style="display:none">
+            Trade amounts are split in proportion to where each holding currently
+            sits across your accounts — this shows where the position is, not
+            advice on which account to trade in.
+          </div>
         </div>
 
         <!-- CLAUDE AI PANEL -->
@@ -848,6 +874,14 @@ tbody td:nth-child(2){text-align:left}
     <button class="wl-close" onclick="bkCloseModal()" aria-label="Close">✕</button>
     <div class="wl-title">Review positions</div>
     <div class="wl-sub" id="bk-sub">Choose what to optimize.</div>
+
+    <div class="bk-accts" id="bk-accts" style="display:none">
+      <div class="bk-accts-head">
+        <span>Accounts to include</span>
+        <span class="bk-accts-hint">optimized together as one portfolio</span>
+      </div>
+      <div id="bk-accts-list"></div>
+    </div>
 
     <div id="bk-notes" class="bk-notes"></div>
 
@@ -1326,10 +1360,14 @@ function render(data, holdings) {
       <td class="mono-dim">${(r.current_weight*100).toFixed(1)}%</td>
       <td class="mono-g">${(r.optimal_weight*100).toFixed(1)}%</td>
       <td class="mono-val">$${r.target_value.toLocaleString('en',{maximumFractionDigits:0})}</td>
-      <td class="${amtCls}">${amtStr}</td>
+      <td class="${amtCls}">${amtStr}${tradeSplit(t, amt)}</td>
       <td>${badge}</td>`;
     tbody.appendChild(tr);
   });
+
+  // The caption only earns its place when a split is actually on screen.
+  const cap = document.getElementById('attr-caption');
+  if (cap) cap.style.display = hasAttribution() ? '' : 'none';
 
   document.getElementById('results').style.display = 'flex';
   document.getElementById('results').style.flexDirection = 'column';
@@ -1656,6 +1694,12 @@ function pct(v) { return (v*100).toFixed(2)+'%'; }
 const BK_TOKEN_KEY = 'snaptrade_token';
 let bkPositions = null;    // last reconciliation payload
 let bkMax = 15;
+let bkAcctIds = null;      // account ids in scope; null = all of them
+let bkAcctTimer = null;
+// symbol -> [{name, share}], so the results table can say where a trade lands.
+// Keyed by symbol and held outside the snapshot mechanism, so restoreSnapshot()
+// keeps working untouched.
+let bkAttribution = {};
 
 const bkToken = () => sessionStorage.getItem(BK_TOKEN_KEY);
 const bkAuth  = () => ({ 'Authorization': 'Bearer ' + bkToken() });
@@ -1764,17 +1808,53 @@ async function bkDisconnect() {
   bkNote('Disconnected.');
 }
 
-async function bkLoadPositions() {
-  bkNote('Reading your positions…');
+async function bkLoadPositions(keepOpen) {
+  if (!keepOpen) bkNote('Reading your positions…');
+  const q = bkAcctIds && bkAcctIds.length ? `?accounts=${encodeURIComponent(bkAcctIds.join(','))}` : '';
   try {
-    const r = await fetch(`${API}/snaptrade/positions`, { headers: bkAuth() });
+    const r = await fetch(`${API}/snaptrade/positions${q}`, { headers: bkAuth() });
     if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || 'Could not read positions');
     bkPositions = await r.json();
     bkNote('');
     bkOpenModal();
   } catch (e) {
     bkNote(e.message, true);
+    if (keepOpen) bkCloseModal();
   }
+}
+
+// Re-reconcile server-side whenever the account scope changes: the 15-cap and
+// the universe check must be recomputed against the new subset, and keeping
+// that logic in one place means the browser never re-implements it.
+function bkAcctToggle() {
+  const boxes = [...document.querySelectorAll('#bk-accts-list input')];
+  const picked = boxes.filter(b => b.checked).map(b => b.dataset.id);
+  if (!picked.length) {                     // never allow an empty scope
+    bkTally();
+    document.getElementById('bk-import').disabled = true;
+    document.getElementById('bk-import').textContent = 'Select an account';
+    return;
+  }
+  bkAcctIds = picked.length === boxes.length ? null : picked;
+  clearTimeout(bkAcctTimer);
+  bkAcctTimer = setTimeout(() => bkLoadPositions(true), 250);
+}
+
+function bkRenderAccounts(p) {
+  const box = document.getElementById('bk-accts');
+  const list = p.accounts || [];
+  // One account is the common case — no selector needed, no extra noise.
+  if (list.length < 2) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const sel = p.selected_accounts;           // null = all in scope
+  document.getElementById('bk-accts-list').innerHTML = list.map(a => `
+    <label class="bk-acct">
+      <input type="checkbox" data-id="${esc(a.id)}"
+             ${(!sel || sel.includes(a.id)) ? 'checked' : ''} onchange="bkAcctToggle()">
+      <span class="bk-acct-name">${esc(a.name)}<span class="bk-acct-broker"> · ${esc(a.broker)}</span></span>
+      <span class="bk-acct-val">${a.value ? '$'+Number(a.value).toLocaleString('en',{maximumFractionDigits:0}) : ''}</span>
+      <span class="bk-acct-ccy">${esc(a.currency || '')}</span>
+    </label>`).join('');
 }
 
 // ── review modal ──
@@ -1787,16 +1867,29 @@ function bkOpenModal() {
     `${p.supported.length} position(s) we can model` +
     (p.accounts && p.accounts.length ? ` across ${p.accounts.length} account(s).` : '.');
 
+  bkRenderAccounts(p);
+
   document.getElementById('bk-notes').innerHTML =
     (p.notes || []).map(n => `<div class="bk-note-item">${esc(n)}</div>`).join('');
 
-  document.getElementById('bk-list').innerHTML = p.supported.map((s, i) => `
+  document.getElementById('bk-list').innerHTML = p.supported.map((s, i) => {
+    // Only show sources when a holding is actually split — a single-account
+    // position stays exactly as plain as it was before.
+    const src = (s.accounts || []).length > 1
+      ? `<div class="bk-src">${s.accounts.map(a =>
+          `<span class="bk-src-tag">${esc(a.name)} · $${a.value.toLocaleString('en',{maximumFractionDigits:0})}</span>`
+        ).join('')}</div>` : '';
+    return `
     <label class="bk-row">
-      <input type="checkbox" ${s.selected ? 'checked' : ''} data-i="${i}" onchange="bkTally()">
-      <span class="bk-sym">${esc(s.symbol)}</span>
-      <span class="bk-units">${s.units} units</span>
-      <span class="bk-val">$${s.value.toLocaleString('en',{maximumFractionDigits:0})}</span>
-    </label>`).join('');
+      <div class="bk-rowmain">
+        <input type="checkbox" ${s.selected ? 'checked' : ''} data-i="${i}" onchange="bkTally()">
+        <span class="bk-sym">${esc(s.symbol)}</span>
+        <span class="bk-units">${s.units} units</span>
+        <span class="bk-val">$${s.value.toLocaleString('en',{maximumFractionDigits:0})}</span>
+      </div>
+      ${src ? `<div class="bk-rowwrap">${src}</div>` : ''}
+    </label>`;
+  }).join('');
 
   const ex = p.unsupported || [];
   document.getElementById('bk-excluded').style.display = ex.length ? '' : 'none';
@@ -1848,6 +1941,14 @@ function bkImport() {
   tickers = picked.map(p => p.symbol);
   renderChips();
 
+  // Remember where each holding sits so the trade list can attribute itself.
+  bkAttribution = {};
+  picked.forEach(p => {
+    if ((p.accounts || []).length > 1) {
+      bkAttribution[p.symbol] = p.accounts.map(a => ({ name: a.name, share: a.share }));
+    }
+  });
+
   const total = picked.reduce((a, p) => a + p.value, 0);
   document.getElementById('tot').value = Math.round(total);
   renderH();                                    // rebuild the holdings grid
@@ -1864,6 +1965,40 @@ function bkImport() {
 
   bkCloseModal();
   bkNote(`Imported ${picked.length} position(s). Run the optimization when ready.`);
+}
+
+// Split a trade across the accounts holding that symbol, in proportion to how
+// much of it each already holds. This says WHERE the position sits — it is not
+// a recommendation about which account to trade in, and the caption under the
+// table says so. Tax-aware placement would need cost basis and account type.
+function tradeSplit(symbol, amount) {
+  const parts = bkAttribution[symbol];
+  if (!parts || parts.length < 2 || Math.abs(amount) < 50) return '';
+  const amounts = splitWhole(Math.abs(amount), parts.map(p => p.share));
+  return '<div class="trade-split">' + parts.map((p, i) =>
+    `<span class="trade-split-row">$${amounts[i].toLocaleString('en')} <b>${esc(p.name)}</b></span>`
+  ).join('') + '</div>';
+}
+
+// Largest-remainder apportionment: whole dollars that sum EXACTLY to the
+// rounded total. Rounding each share independently drifts — $2,450 split three
+// ways shows $817 x 3 = $2,451, and a trade list whose parts do not add up to
+// its own total is not worth printing.
+function splitWhole(total, shares) {
+  const exact = shares.map(s => total * s);
+  const out   = exact.map(Math.floor);
+  let residual = Math.round(total) - out.reduce((a, b) => a + b, 0);
+  const order = exact
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; residual > 0 && order.length; k++, residual--) {
+    out[order[k % order.length].i] += 1;
+  }
+  return out;
+}
+
+function hasAttribution() {
+  return tickers.some(t => (bkAttribution[t] || []).length > 1);
 }
 
 function esc(s) {

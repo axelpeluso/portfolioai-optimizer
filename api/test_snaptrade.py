@@ -16,14 +16,22 @@ REAL = "AAPL"      # in tickers.json
 REAL2 = "MSFT"
 
 
-def pos(symbol, units=10, price=100.0, kind="cs", market_value=None):
+def pos(symbol, units=10, price=100.0, kind="cs", market_value=None, account=None):
     """A SnapTrade-shaped position (nested symbol object)."""
-    return {
+    p = {
         "symbol": {"symbol": {"symbol": symbol, "type": {"code": kind}}},
         "units": units,
         "price": price,
         "market_value": market_value if market_value is not None else units * price,
     }
+    if account:
+        p["_account"] = account
+    return p
+
+
+def acct(aid, name, value=10000.0, currency="USD"):
+    return {"id": aid, "name": name, "broker": "TestBroker",
+            "value": value, "currency": currency}
 
 
 # ── reconciliation ────────────────────────────────────────────
@@ -98,6 +106,86 @@ def test_flat_symbol_shape_is_handled():
     out = st.reconcile([{"symbol": {"symbol": REAL, "type": {"code": "cs"}},
                          "units": 2, "price": 50.0, "market_value": 100.0}])
     assert out["supported"][0]["symbol"] == REAL
+
+
+# ── multi-account ─────────────────────────────────────────────
+ACCTS = [acct("a1", "Margin", 30000.0), acct("a2", "RRSP", 20000.0)]
+
+
+def test_split_across_accounts_sums_to_the_total():
+    out = st.reconcile([pos(REAL, units=24, price=310.0, account="a1"),
+                        pos(REAL, units=16, price=310.0, account="a2")],
+                       accounts=ACCTS)
+    row = out["supported"][0]
+    assert len(row["accounts"]) == 2
+    assert round(sum(a["value"] for a in row["accounts"]), 2) == row["value"]
+    assert round(sum(a["units"] for a in row["accounts"]), 6) == row["units"]
+
+
+def test_shares_sum_to_one():
+    """Guards the pro-rata display split in the results table."""
+    out = st.reconcile([pos(REAL, units=6, price=100.0, account="a1"),
+                        pos(REAL, units=4, price=100.0, account="a2")],
+                       accounts=ACCTS)
+    shares = [a["share"] for a in out["supported"][0]["accounts"]]
+    assert round(sum(shares), 6) == 1.0
+    assert sorted(shares, reverse=True) == [0.6, 0.4]
+
+
+def test_accounts_are_named_and_ranked_by_value():
+    out = st.reconcile([pos(REAL, units=2, price=100.0, account="a2"),
+                        pos(REAL, units=8, price=100.0, account="a1")],
+                       accounts=ACCTS)
+    names = [a["name"] for a in out["supported"][0]["accounts"]]
+    assert names == ["Margin", "RRSP"], "largest holding first"
+
+
+def test_single_account_still_reports_one_entry():
+    out = st.reconcile([pos(REAL, account="a1")], accounts=ACCTS)
+    row = out["supported"][0]
+    assert len(row["accounts"]) == 1
+    assert row["accounts"][0]["share"] == 1.0
+
+
+def test_account_scoping_excludes_other_accounts():
+    out = st.reconcile([pos(REAL, units=10, price=100.0, account="a1"),
+                        pos(REAL2, units=10, price=100.0, account="a2")],
+                       accounts=ACCTS, account_ids=["a1"])
+    assert [p["symbol"] for p in out["supported"]] == [REAL]
+    assert out["total_value"] == 1000.0
+
+
+def test_scoping_recomputes_the_top_n():
+    """Narrowing to one account must re-rank, not reuse the union's selection."""
+    universe = sorted(st.universe())[:20]
+    raw = [pos(s, units=1, price=float(100 - i),
+               account="a1" if i >= 5 else "a2")
+           for i, s in enumerate(universe)]
+    scoped = st.reconcile(raw, accounts=ACCTS, account_ids=["a1"])
+    assert len(scoped["supported"]) == 15
+    assert all(p["selected"] for p in scoped["supported"]), \
+        "15 positions in scope should all fit under the cap"
+
+
+def test_foreign_currency_account_is_excluded_not_converted():
+    mixed = [acct("a1", "USD Margin", 30000.0, "USD"),
+             acct("a2", "CAD TFSA",   20000.0, "CAD")]
+    out = st.reconcile([pos(REAL,  units=10, price=100.0, account="a1"),
+                        pos(REAL2, units=10, price=100.0, account="a2")],
+                       accounts=mixed)
+    assert out["currency"] == "USD", "base is the largest account's currency"
+    assert [p["symbol"] for p in out["supported"]] == [REAL]
+    assert out["total_value"] == 1000.0, "CAD value must not be summed in"
+    bad = [u for u in out["unsupported"] if u["reason"] == st.REASON_CURRENCY]
+    assert [u["symbol"] for u in bad] == [REAL2]
+    assert any("not in USD" in n for n in out["notes"])
+
+
+def test_untagged_positions_still_work():
+    """Back-compat: positions with no _account tag (older callers, tests)."""
+    out = st.reconcile([pos(REAL), pos(REAL2)])
+    assert len(out["supported"]) == 2
+    assert all(len(p["accounts"]) == 1 for p in out["supported"])
 
 
 # ── auth gate ─────────────────────────────────────────────────

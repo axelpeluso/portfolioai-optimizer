@@ -597,25 +597,35 @@ def snaptrade_accounts(principal: dict = Depends(_principal)):
 
 
 @app.get("/snaptrade/positions")
-def snaptrade_positions(principal: dict = Depends(_principal)):
-    """Positions across every connected account, reconciled against the universe.
+def snaptrade_positions(accounts: Optional[str] = None,
+                        principal: dict = Depends(_principal)):
+    """Positions across the connected accounts, reconciled against the universe.
+
+    `accounts` is an optional comma-separated list of account ids; omitted means
+    all of them. Consolidation happens here rather than in the browser so the
+    15-ticker cap and the universe check have exactly one implementation.
 
     Nothing is persisted — positions are fetched, reconciled, returned and
     discarded, which keeps personal financial data out of our storage entirely.
     """
     import brokerage as st
     uid, secret = principal["st_user_id"], principal["_secret"]
+    wanted = [a for a in (accounts or "").split(",") if a.strip()] or None
+
     try:
-        accounts = st.list_accounts(uid, secret)
+        all_accounts = st.list_accounts(uid, secret)
         raw, cash = [], 0.0
-        for acct in accounts:
+        for acct in all_accounts:
+            if wanted is not None and acct["id"] not in wanted:
+                continue                    # don't pay for accounts we exclude
             raw += st.list_positions(uid, secret, acct["id"])
             cash += st.account_cash(uid, secret, acct["id"])
     except Exception as e:                      # noqa: BLE001
         raise _st_error(e)
 
-    result = st.reconcile(raw, cash)
-    result["accounts"] = accounts
+    result = st.reconcile(raw, cash, accounts=all_accounts, account_ids=wanted)
+    result["accounts"] = all_accounts           # always the full list, so the
+    result["selected_accounts"] = wanted        # UI can offer the unselected
     return result
 
 
