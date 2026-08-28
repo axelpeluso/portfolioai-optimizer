@@ -712,12 +712,13 @@ def snaptrade_positions(accounts: Optional[str] = None,
 
     try:
         all_accounts = st.list_accounts(uid, secret)
-        raw, cash = [], 0.0
+        raw, cash = [], {}
         for acct in all_accounts:
             if wanted is not None and acct["id"] not in wanted:
                 continue                    # don't pay for accounts we exclude
             raw += st.list_positions(uid, secret, acct["id"])
-            cash += st.account_cash(uid, secret, acct["id"])
+            for ccy, amount in st.account_cash(uid, secret, acct["id"]).items():
+                cash[ccy] = cash.get(ccy, 0.0) + amount
     except Exception as e:                      # noqa: BLE001
         raise _st_error(e)
 

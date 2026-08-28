@@ -16,6 +16,7 @@ the 15-ticker cap on /optimize.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -177,15 +178,33 @@ def _rows(payload) -> list[dict]:
     return [p for p in (payload or []) if isinstance(p, dict)]
 
 
-def account_cash(user_id: str, user_secret: str, account_id: str) -> float:
-    """Cash balance, which the optimizer cannot model as a position."""
+def account_cash(user_id: str, user_secret: str, account_id: str) -> dict[str, float]:
+    """Cash per currency. The optimizer cannot model cash, but we report it.
+
+    Returns {"USD": 1234.5} rather than a single float: summing balances across
+    currencies is the same mistake the position path already guards against, and
+    a blended figure is silently wrong rather than visibly missing.
+    """
+    out: dict[str, float] = {}
     try:
         res = client().account_information.get_user_account_balance(
             user_id=user_id, user_secret=user_secret, account_id=account_id
         )
-        return sum(_num(b.get("cash")) for b in (_body(res) or []))
-    except Exception:      # noqa: BLE001 — cash is informational, never fatal
-        return 0.0
+        # _rows for the same reason as positions: this endpoint may return a
+        # dict wrapper, and iterating that yields strings.
+        for b in _rows(_body(res)):
+            ccy = b.get("currency")
+            if isinstance(ccy, dict):
+                ccy = ccy.get("code") or ccy.get("symbol")
+            ccy = (str(ccy).upper() if ccy else "") or "?"
+            amount = _num(b.get("cash"))
+            if amount:
+                out[ccy] = out.get(ccy, 0.0) + amount
+    except Exception as e:      # noqa: BLE001 — cash is informational, never fatal
+        # Was a bare `return 0.0`, which made a broken call look like an empty
+        # wallet. Report zero, but say why.
+        logging.warning(f"cash lookup failed for {account_id}: {type(e).__name__}: {e}")
+    return out
 
 
 # ── normalisation ─────────────────────────────────────────────
@@ -269,7 +288,7 @@ def _base_currency(accounts: list[dict]) -> str | None:
     return max(with_ccy, key=lambda a: _num(a.get("value"))).get("currency")
 
 
-def reconcile(raw_positions: list[dict], cash: float = 0.0,
+def reconcile(raw_positions: list[dict], cash: float | dict | None = 0.0,
               accounts: list[dict] | None = None,
               account_ids: list[str] | None = None) -> dict:
     """Split broker positions into what /optimize can and cannot accept.
@@ -289,7 +308,18 @@ def reconcile(raw_positions: list[dict], cash: float = 0.0,
     scoped = [a for a in accounts
               if wanted is None or a.get("id") in wanted]
 
-    base_ccy  = _base_currency(scoped)
+    base_ccy_pre = _base_currency(scoped)
+    # Cash arrives per currency. Only the base one is reported: adding CAD to
+    # USD would be the same blending the position path already refuses to do.
+    other_ccy_cash: dict[str, float] = {}
+    if isinstance(cash, dict):
+        other_ccy_cash = {c: v for c, v in cash.items()
+                          if base_ccy_pre and c != base_ccy_pre and v}
+        cash = float(cash.get(base_ccy_pre, 0.0)) if base_ccy_pre \
+               else float(sum(cash.values())) if len(cash) == 1 else 0.0
+    cash = _num(cash)
+
+    base_ccy  = base_ccy_pre
     wrong_ccy = {a["id"] for a in scoped
                  if a.get("currency") and base_ccy and a["currency"] != base_ccy}
 
@@ -404,11 +434,16 @@ def reconcile(raw_positions: list[dict], cash: float = 0.0,
     if cash > 0:
         notes.append(f"{cash:,.2f} {base_ccy or ''} in cash is not modelled as a "
                      f"position.".replace("  ", " "))
+    if other_ccy_cash:
+        detail = ", ".join(f"{v:,.2f} {c}" for c, v in sorted(other_ccy_cash.items()))
+        notes.append(f"Cash in other currencies ({detail}) is reported separately "
+                     f"and not converted.")
 
     return {
         "supported":   supported,
         "unsupported": unsupported,
         "cash":        round(cash, 2),
+        "cash_other":  {c: round(v, 2) for c, v in other_ccy_cash.items()},
         "currency":    base_ccy,
         "total_value": round(sum(p["value"] for p in supported), 2),
         "max_tickers": MAX_TICKERS,

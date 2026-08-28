@@ -217,6 +217,51 @@ def test_real_account_types_classify_correctly():
     assert (ira["jurisdiction"], ira["sheltered"]) == (tax.US, True)
 
 
+# ── efectivo ──────────────────────────────────────────────────
+USD_ONLY = [acct("a1", "Individual", 25000.0, "USD")]
+MIXED    = [acct("a1", "Individual", 25000.0, "USD"),
+            acct("a2", "TFSA", 9000.0, "CAD")]
+
+
+def one_position(account="a1"):
+    return [dict(p, _account=account) for p in st._rows(
+        {"results": [{"instrument": {"kind": "stock", "symbol": REAL},
+                      "units": "5", "price": "180.5", "cost_basis": "175"}]})]
+
+
+def test_cash_accepts_a_plain_float():
+    """Compatibilidad: llamadas viejas pasaban un solo numero."""
+    out = st.reconcile(one_position(), 500.0, accounts=USD_ONLY)
+    assert out["cash"] == 500.0 and out["cash_other"] == {}
+
+
+def test_cash_per_currency_uses_the_base_one():
+    out = st.reconcile(one_position(), {"USD": 37500.0}, accounts=USD_ONLY)
+    assert out["cash"] == 37500.0
+
+
+def test_cash_in_other_currencies_is_not_blended():
+    """Sumar CAD sobre USD es el mismo error que el camino de posiciones evita."""
+    out = st.reconcile(one_position(), {"USD": 25000.0, "CAD": 9000.0},
+                       accounts=MIXED)
+    assert out["currency"] == "USD"
+    assert out["cash"] == 25000.0, "solo la moneda base"
+    assert out["cash_other"] == {"CAD": 9000.0}, "el resto, reportado aparte"
+    assert any("not converted" in n for n in out["notes"])
+
+
+def test_missing_cash_is_zero_not_an_error():
+    assert st.reconcile(one_position(), None, accounts=USD_ONLY)["cash"] == 0.0
+
+
+def test_rows_tolerates_every_shape():
+    """El wrapper dict rompio las posiciones; los balances usan el mismo helper."""
+    assert st._rows([{"cash": 100.0}]) == [{"cash": 100.0}]
+    assert st._rows({"results": [{"cash": 100.0}]}) == [{"cash": 100.0}]
+    assert st._rows("no soy una lista") == []
+    assert st._rows(None) == []
+
+
 # ── multi-account ─────────────────────────────────────────────
 ACCTS = [acct("a1", "Margin", 30000.0), acct("a2", "RRSP", 20000.0)]
 
