@@ -87,6 +87,7 @@ Final Project/
 │   ├── test_snaptrade.py       ← reconciliation + auth-gate tests
 │   ├── test_tax.py             ← tax disclosure tests
 │   ├── test_optimizer_modes.py ← opt-in modes + default-off equivalence
+│   ├── test_security.py        ← límites de tamaño y frecuencia
 │   ├── prices.csv              ← bundled adjusted-close history (288 tickers)
 │   ├── tickers.json            ← symbol → company name map (for autocomplete)
 │   ├── requirements.txt        ← Python deps (deployment)
@@ -98,6 +99,7 @@ Final Project/
 ├── notebook/
 │   └── portfolio_optimizer.ipynb   ← full ML walk-through
 ├── docs/
+│   ├── whitepaper.md           ← documento técnico completo (modelos, validación, límites)
 │   ├── executive-summary.md    ← qué es, cómo funciona, estado medido, límites
 │   ├── demo-script.md          ← guion de demo paso a paso + plan de contingencia
 │   ├── snaptrade-setup.md      ← brokerage import: credentials, table, cleanup
