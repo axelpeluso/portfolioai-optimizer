@@ -44,6 +44,101 @@ app.add_middleware(
     allow_headers  = ["*"],
 )
 
+# ── LÍMITES DE ABUSO ──────────────────────────────────────────
+# /optimize cuesta ~40 s de CPU en frio; /chat y /explain facturan a Anthropic.
+# Los tres estaban abiertos y sin tope: cualquiera con la URL podia agotar los
+# creditos o saturar la instancia. max_tokens limita la SALIDA del modelo, no la
+# entrada, que es donde esta el gasto que un atacante controla.
+#
+# LIMITACION CONOCIDA: el contador vive en la memoria del proceso. Se reinicia en
+# cada deploy y no se comparte entre instancias. Es un lomo de burro contra abuso
+# casual, no un control frente a un atacante decidido; para eso hace falta un
+# contador en Supabase o Redis.
+
+MAX_BODY_BYTES = 256 * 1024        # 256 KB
+# Medido sobre cuerpos reales: el peor caso de /optimize (15 posiciones con lotes
+# fiscales) pesa 14.9 KB y una conversacion larga de /chat, 10.8 KB. ~17x de
+# margen: el uso normal ni se acerca.
+
+RATE_LIMITS = {                    # llamadas por IP por hora
+    "optimize":          20,       # ~40 s de CPU cada una
+    "llm":               30,       # /chat y /explain comparten cupo: misma factura
+    "snaptrade_session": 10,       # crea usuarios facturables en SnapTrade
+}
+
+MAX_CHAT_MESSAGES  = 40
+MAX_CHAT_CHARS     = 20_000
+MAX_PORTFOLIO_JSON = 64 * 1024
+
+_rate_state: dict[str, dict[str, list[float]]] = {}
+
+
+def _rate_limit(bucket: str, ip: str, max_per_hour: int) -> int | None:
+    """Registra una llamada. Devuelve los segundos de espera si excede, o None."""
+    now = time.time()
+    hits = [t for t in _rate_state.setdefault(bucket, {}).get(ip, []) if now - t < 3600]
+    _rate_state[bucket][ip] = hits
+    if len(hits) >= max_per_hour:
+        return max(1, int(3600 - (now - min(hits))))
+    hits.append(now)
+    return None
+
+
+def _client_ip(request: Request) -> str:
+    # Railway va detras de un proxy: sin esto, todas las peticiones comparten IP
+    # y el limite se agota para todos a la vez.
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limited(bucket: str, max_per_hour: int | None = None):
+    """Dependencia de FastAPI que aplica el limite de un bucket."""
+    limit = max_per_hour or RATE_LIMITS.get(bucket, 60)
+
+    def dep(request: Request):
+        retry = _rate_limit(bucket, _client_ip(request), limit)
+        if retry is not None:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Demasiadas peticiones. Reintenta en {retry} s.",
+                headers={"Retry-After": str(retry)},
+            )
+    return dep
+
+
+@app.middleware("http")
+async def _cap_body_size(request: Request, call_next):
+    """Rechaza cuerpos desmedidos antes de leerlos.
+
+    Mirar Content-Length evita cargar en memoria algo que igual vamos a
+    descartar. Un cliente puede omitir el header, pero entonces el cuerpo se
+    lee en trozos y los limites por endpoint siguen aplicando.
+    """
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=413,
+            content={"detail": f"Cuerpo demasiado grande "
+                               f"(máximo {MAX_BODY_BYTES // 1024} KB)."},
+        )
+    return await call_next(request)
+
+
+def _check_json_size(obj, label: str, limit: int = MAX_PORTFOLIO_JSON) -> None:
+    """El costo de un prompt lo fija su tamaño serializado, no el del request."""
+    if obj is None:
+        return
+    size = len(json.dumps(obj, default=str))
+    if size > limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label} demasiado grande ({size // 1024} KB, "
+                   f"máximo {limit // 1024} KB).")
+
+
 # ── REQUEST / RESPONSE MODELS ─────────────────────────────────
 class TaxContext(BaseModel):
     """Optional broker-derived detail used for tax DISCLOSURE only.
@@ -211,8 +306,6 @@ def _supabase_client():
 
 SNAPTRADE_TABLE       = "snaptrade_principals"
 SESSION_TTL_HOURS     = 24
-_SESSION_RATE: dict[str, list[float]] = {}     # ip -> recent create timestamps
-_SESSION_RATE_MAX     = 10                     # per IP per hour
 
 
 def _fernet():
@@ -244,13 +337,8 @@ def _hash_token(token: str) -> str:
 
 
 def _rate_limited(ip: str) -> bool:
-    now = time.time()
-    hits = [t for t in _SESSION_RATE.get(ip, []) if now - t < 3600]
-    _SESSION_RATE[ip] = hits
-    if len(hits) >= _SESSION_RATE_MAX:
-        return True
-    hits.append(now)
-    return False
+    """Compatibilidad: el limitador de sesiones de SnapTrade."""
+    return _rate_limit("snaptrade_session", ip, RATE_LIMITS["snaptrade_session"]) is not None
 
 
 def _principal(authorization: Optional[str] = Header(None)) -> dict:
@@ -377,7 +465,7 @@ def _data_range() -> dict:
             _range_cache = {"data_start": None, "data_end": None}
     return _range_cache
 
-@app.post("/optimize")
+@app.post("/optimize", dependencies=[Depends(rate_limited("optimize"))])
 def optimize(request: OptimizeRequest):
     """
     Main endpoint — runs full ML pipeline and returns
@@ -469,12 +557,15 @@ def _tax_disclosure(result: dict, ctx: "TaxContext", taxmod) -> dict:
     return {"summary": summary, "per_symbol": per_symbol, "estimate": est}
 
 
-@app.post("/explain")
+@app.post("/explain", dependencies=[Depends(rate_limited("llm"))])
 def explain(request: ExplainRequest):
     """
     Stream a plain-language explanation of the rebalancing result from
     Claude via Server-Sent Events (SSE), so text appears word by word.
     """
+    # portfolio_data va entero dentro del prompt: su tamaño ES el costo.
+    _check_json_size(request.portfolio_data, "portfolio_data")
+
     client = _anthropic_client()
     prompt = EXPLAIN_PROMPT.format(
         portfolio_data=json.dumps(request.portfolio_data, default=str)
@@ -487,7 +578,7 @@ def explain(request: ExplainRequest):
     )
 
 
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(rate_limited("llm"))])
 def chat(request: ChatRequest):
     """
     Conversational portfolio assistant. Streams a Claude response (SSE) using
@@ -497,6 +588,20 @@ def chat(request: ChatRequest):
     """
     if not request.messages:
         raise HTTPException(status_code=400, detail="No messages provided.")
+
+    # El gasto real de un prompt esta en los tokens de ENTRADA, que max_tokens no
+    # limita. Sin estos topes, un solo request puede costar arbitrariamente caro.
+    if len(request.messages) > MAX_CHAT_MESSAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Demasiados mensajes (máximo {MAX_CHAT_MESSAGES}).")
+    total = sum(len(m.content or "") for m in request.messages)
+    if total > MAX_CHAT_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Conversación demasiado larga ({total} caracteres, "
+                   f"máximo {MAX_CHAT_CHARS}).")
+    _check_json_size(request.portfolio_data, "portfolio_data")
 
     client = _anthropic_client()
 
@@ -641,8 +746,9 @@ def snaptrade_session(request: Request):
     """
     import brokerage as st
 
-    ip = (request.client.host if request.client else "unknown")
-    if _rate_limited(ip):
+    # _client_ip y no request.client.host: detras del proxy de Railway todas las
+    # peticiones comparten IP y el cupo se agotaria para todos a la vez.
+    if _rate_limited(_client_ip(request)):
         raise HTTPException(status_code=429,
                             detail="Too many sessions from this address.")
 
@@ -688,10 +794,12 @@ def snaptrade_session(request: Request):
             logging.warning(f"orphaned SnapTrade user {st_user_id}")
         # El tipo y el mensaje del driver, sin secretos: sin esto un fallo de
         # tabla, de permisos o de columna se ven todos igual.
+        # El mensaje completo va al log; al cliente solo el tipo. El detalle del
+        # driver nombra tablas y permisos, y eso no es asunto de quien llama.
         logging.warning(f"snaptrade session insert failed: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"No se pudo guardar la sesion ({type(e).__name__}): {str(e)[:200]}")
+            detail=f"No se pudo guardar la sesión ({type(e).__name__}).")
 
     return {"token": token, "expires_at": expires.isoformat()}
 
