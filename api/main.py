@@ -351,7 +351,31 @@ def tickers():
         except FileNotFoundError:
             names = {}
         _ticker_catalog = [{"symbol": s, "name": n} for s, n in sorted(names.items())]
-    return {"count": len(_ticker_catalog), "tickers": _ticker_catalog}
+    return {"count": len(_ticker_catalog), "tickers": _ticker_catalog,
+            **_data_range()}
+
+
+_range_cache: Optional[dict] = None
+
+
+def _data_range() -> dict:
+    """First and last date in the bundled price history.
+
+    Served so the UI can state the window instead of hardcoding it: the weekly
+    refresh moves the end date, and a fixed label goes stale silently — it was
+    still claiming "July 2026" with data through August.
+    """
+    global _range_cache
+    if _range_cache is None:
+        try:
+            import optimizer
+            import pandas as pd
+            idx = pd.read_csv(optimizer.CSV_PATH, index_col=0, usecols=[0]).index
+            _range_cache = {"data_start": str(idx[0])[:10], "data_end": str(idx[-1])[:10]}
+        except Exception as e:                  # noqa: BLE001 — cosmetic only
+            logging.warning(f"data range unavailable: {type(e).__name__}")
+            _range_cache = {"data_start": None, "data_end": None}
+    return _range_cache
 
 @app.post("/optimize")
 def optimize(request: OptimizeRequest):
