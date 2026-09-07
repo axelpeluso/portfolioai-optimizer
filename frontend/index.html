@@ -187,6 +187,8 @@ aside{
 .h-inp:focus{border-color:var(--g);background:var(--s2)}
 
 /* Total display */
+.tot-note{margin-top:5px;font-size:10px;color:var(--t3);line-height:1.4}
+.field input[readonly]{opacity:.75;cursor:default}
 .total-val{font-family:var(--mono);font-size:18px;font-weight:500;color:var(--t1);letter-spacing:.5px}
 .total-label{font-size:11px;color:var(--t3);margin-top:2px}
 
@@ -658,7 +660,9 @@ tbody td:nth-child(2){text-align:left}
         <div class="aside-label">Portfolio Value</div>
         <div class="field">
           <label>Total value (USD)</label>
-          <input type="number" id="tot" value="11500" min="0" onchange="renderH()"/>
+          <input type="number" id="tot" value="0" min="0" readonly
+                 title="Suma de las tenencias — el optimizador usa este total"/>
+          <div class="tot-note" id="tot-note"></div>
         </div>
       </div>
 
@@ -1108,6 +1112,7 @@ function renderChips() {
     w.appendChild(c);
   });
   renderH();
+  syncTotal();
   updateTickerHelp();
 }
 
@@ -1222,22 +1227,50 @@ function remT(t) {
 
 // ── HOLDINGS ──
 function renderH() {
-  const tot = parseFloat(document.getElementById('tot').value) || 11500;
+  // El optimizador usa la SUMA de las tenencias como total, nunca el campo de
+  // arriba. Usar denominadores distintos mostraba a un mismo activo con dos
+  // pesos diferentes: 1,9% en este panel y 6,7% en la tabla de resultados.
   const g = document.getElementById('hgrid'); g.innerHTML = '';
+  const tot = holdingsTotal();
   tickers.forEach(t => {
     const v = DEF.holdings[t] ?? 0;
     const p = tot > 0 ? ((v/tot)*100).toFixed(1) : '0.0';
     g.innerHTML += `
       <div class="h-ticker">${t}</div>
-      <input class="h-inp" type="number" id="h-${t}" value="${v}" min="0" oninput="upP('${t}',${tot})"/>
+      <input class="h-inp" type="number" id="h-${t}" value="${v}" min="0" oninput="upP('${t}')"/>
       <div class="h-pct" id="p-${t}">${p}%</div>`;
   });
 }
 
-function upP(t, tot) {
-  const v = parseFloat(document.getElementById(`h-${t}`)?.value) || 0;
-  const el = document.getElementById(`p-${t}`);
-  if (el) el.textContent = tot > 0 ? ((v/tot)*100).toFixed(1)+'%' : '0.0%';
+function holdingsTotal() {
+  return tickers.reduce((a, t) => {
+    const el = document.getElementById('h-' + t);
+    return a + (el ? (parseFloat(el.value) || 0) : 0);
+  }, 0);
+}
+
+// Mantiene el campo de valor total y las notas alineados con lo que el
+// optimizador va a usar realmente.
+function syncTotal() {
+  const tot = holdingsTotal();
+  const campo = document.getElementById('tot');
+  const nota = document.getElementById('tot-note');
+  if (campo) campo.value = Math.round(tot);
+  if (nota) nota.textContent = tot > 0
+    ? `Suma de las tenencias — es el total que usa el optimizador.`
+    : 'Cargá tus tenencias abajo.';
+  tickers.forEach(t => {
+    const el = document.getElementById('p-' + t);
+    const v = document.getElementById('h-' + t);
+    if (el && v) el.textContent = tot > 0
+      ? (((parseFloat(v.value) || 0) / tot) * 100).toFixed(1) + '%' : '0.0%';
+  });
+}
+
+function upP(t) {
+  // Cambiar una tenencia mueve el total, y con el todos los porcentajes: hay
+  // que recalcularlos todos, no solo el de la fila editada.
+  syncTotal();
 }
 
 // ── RESET ──
@@ -1294,8 +1327,9 @@ function restoreSnapshot(id) {
   const tot = parseFloat(document.getElementById('tot').value) || 11500;
   snap.tickers.forEach(t => {
     const el = document.getElementById('h-' + t);
-    if (el) { el.value = snap.holdings[t] != null ? snap.holdings[t] : 0; upP(t, tot); }
+    if (el) el.value = snap.holdings[t] != null ? snap.holdings[t] : 0;
   });
+  syncTotal();
   // Repaint results from the stored data (no recompute)
   render(snap.data, snap.holdings);
   renderSnapshotBar();
@@ -2111,7 +2145,7 @@ function bkImport() {
   renderH();                                    // rebuild the holdings grid
   picked.forEach(p => {                         // then set each real value
     const el = document.getElementById('h-' + p.symbol);
-    if (el) { el.value = Math.round(p.value); upP(p.symbol, total); }
+    if (el) el.value = Math.round(p.value);
   });
 
   track('snaptrade_import_completed', {
@@ -2121,6 +2155,7 @@ function bkImport() {
   });
 
   bkCloseModal();
+  syncTotal();
   bkNote(`Imported ${picked.length} position(s). Run the optimization when ready.`);
 }
 
