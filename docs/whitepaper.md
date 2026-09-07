@@ -260,7 +260,7 @@ manualmente** (`api/tax_profiles.json`).
 La alternativa —clasificar por coincidencia de patrones sobre el nombre— se
 intentó y falló en ambas direcciones: omitió VNQ y XLRE (ambos inmobiliarios) y
 LQD y EMB (ambos de renta fija), y clasificó erróneamente MA, QCOM, TXN y UNH por
-contener la palabra "Incorporated". La lista abarca 38 instrumentos; los 250
+contener la palabra "Incorporated". La lista abarca 70 instrumentos; los 433
 restantes se tratan como renta variable con una etiqueta genérica explícita.
 
 Incluye un caso frecuentemente omitido: los fideicomisos de metales preciosos
@@ -316,10 +316,23 @@ declarada.
 | Persistencia | Supabase (lista de espera, analítica, principales) |
 | Lenguaje natural | API de Anthropic (Claude Haiku 4.5) |
 
-**Universo:** 288 instrumentos — acciones, ETF sectoriales, de factores, de renta
-fija y de materias primas, y vehículos de criptomonedas.
+**Universo:** 503 instrumentos — acciones, ETF sectoriales, de factores, de
+renta fija y de materias primas, fondos mutuos (índice, internacionales, de
+bonos y de fecha objetivo), y vehículos de criptomonedas.
 
-**Historia de precios:** 1.418 sesiones, del 2021-01-04 al 2026-08-26, cierres
+La ampliación se realiza con `expand_universe.py`, que **no confía en la lista
+de candidatos**: prueba cada símbolo contra la fuente y solo lo incorpora si
+devuelve al menos 153 sesiones —el mínimo que exige el Random Forest— y una
+volatilidad distinta de cero. Ese segundo filtro excluye automáticamente los
+fondos de money market, que economicamente son efectivo y cuya volatilidad nula
+vuelve casi singular la matriz de covarianza.
+
+En la ampliación de 288 a 503 el validador rechazó 18 candidatos: dos fondos de
+money market, y el resto operaciones societarias reales —empresas absorbidas,
+renombradas o retiradas de cotización— que una lista curada a mano habría
+arrastrado como instrumentos muertos.
+
+**Historia de precios:** 1.425 sesiones. del 2021-01-04 al 2026-09-04, cierres
 ajustados, empaquetados en el repositorio. Actualización semanal automatizada
 mediante GitHub Actions con validación previa a la escritura: se rechaza toda
 actualización que reduzca el número de filas, elimine columnas, produzca precios
@@ -432,7 +445,8 @@ encuentra pendiente.
    determina.
 2. **Cuentas de usuario persistentes**, sustituyendo las sesiones efímeras.
 3. **Límites de frecuencia externalizados**, para superar la limitación de §8.
-4. **Ampliación del universo** más allá de 288 instrumentos.
+4. **Ampliación del universo** más allá de 503 instrumentos, y cobertura de
+   bonos individuales, que la fuente actual no provee.
 5. **Reducción del tiempo de respuesta en frío**, hoy el principal obstáculo de
    experiencia de uso.
 

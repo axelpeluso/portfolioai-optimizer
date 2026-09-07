@@ -9,7 +9,7 @@ main.py) so the API still boots and the existing test suite still runs when
 snaptrade is not installed.
 
 Reconciliation lives here rather than in the frontend because both constraints
-it enforces are server-side facts: the 288-symbol universe in tickers.json, and
+it enforces are server-side facts: the 503-symbol universe in tickers.json, and
 the 15-ticker cap on /optimize.
 """
 

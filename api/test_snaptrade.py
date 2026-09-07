@@ -41,6 +41,9 @@ client = TestClient(main.app)
 
 REAL = "AAPL"      # in tickers.json
 REAL2 = "MSFT"
+# Un simbolo que no puede entrar al universo por ampliarlo: los tests
+# anteriores usaban VTSAX, que era ficticio hasta que lo agregamos de verdad.
+NEVER = "ZZ-NOT-A-REAL-TICKER"
 
 
 def pos(symbol, units=10, price=100.0, kind="cs", market_value=None, account=None):
@@ -63,9 +66,9 @@ def acct(aid, name, value=10000.0, currency="USD"):
 
 # ── reconciliation ────────────────────────────────────────────
 def test_supported_and_unsupported_split():
-    out = st.reconcile([pos(REAL), pos("VTSAX"), pos(REAL2)])
+    out = st.reconcile([pos(REAL), pos(NEVER), pos(REAL2)])
     assert {p["symbol"] for p in out["supported"]} == {REAL, REAL2}
-    assert out["unsupported"][0]["symbol"] == "VTSAX"
+    assert out["unsupported"][0]["symbol"] == NEVER
     assert out["unsupported"][0]["reason"] == st.REASON_UNIVERSE
 
 
@@ -123,7 +126,7 @@ def test_cash_is_reported_but_not_a_position():
 
 def test_total_value_counts_supported_only():
     out = st.reconcile([pos(REAL, units=10, price=100.0),      # 1000 supported
-                        pos("VTSAX", units=10, price=50.0)],   # 500 unsupported
+                        pos(NEVER, units=10, price=50.0)],     # 500 unsupported
                        cash=250.0)
     assert out["total_value"] == 1000.0
 
