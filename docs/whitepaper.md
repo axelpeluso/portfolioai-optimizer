@@ -316,7 +316,7 @@ declarada.
 | Persistencia | Supabase (lista de espera, analítica, principales) |
 | Lenguaje natural | API de Anthropic (Claude Haiku 4.5) |
 
-**Universo:** 503 instrumentos — acciones, ETF sectoriales, de factores, de
+**Universo:** 504 instrumentos — acciones, ETF sectoriales, de factores, de
 renta fija y de materias primas, fondos mutuos (índice, internacionales, de
 bonos y de fecha objetivo), y vehículos de criptomonedas.
 
@@ -327,7 +327,7 @@ volatilidad distinta de cero. Ese segundo filtro excluye automáticamente los
 fondos de money market, que economicamente son efectivo y cuya volatilidad nula
 vuelve casi singular la matriz de covarianza.
 
-En la ampliación de 288 a 503 el validador rechazó 18 candidatos: dos fondos de
+En la ampliación de 288 a 503 instrumentos el validador rechazó 18 candidatos: dos fondos de
 money market, y el resto operaciones societarias reales —empresas absorbidas,
 renombradas o retiradas de cotización— que una lista curada a mano habría
 arrastrado como instrumentos muertos.
@@ -337,6 +337,39 @@ ajustados, empaquetados en el repositorio. Actualización semanal automatizada
 mediante GitHub Actions con validación previa a la escritura: se rechaza toda
 actualización que reduzca el número de filas, elimine columnas, produzca precios
 no positivos, o cuya última fila cubra menos del 90 % de los instrumentos.
+
+### Instrumentos en otra moneda
+
+El optimizador no distingue monedas: solo ve números. Una serie en pesos junto a
+otras en dólares se trataría como comparable sin serlo, de modo que la única
+forma honesta de incorporar un instrumento extranjero es convertirlo.
+
+Para instrumentos argentinos se usa el **contado con liquidación**, no el tipo de
+cambio oficial. Este último fue durante años un precio administrado: la brecha
+alcanzó el 132 % en 2022, así que convertir con él habría duplicado el valor en
+dólares atribuido al período 2021-2023.
+
+El CCL **se deriva de la relación entre CEDEARs y sus subyacentes**, que es como
+se calcula en la práctica, y no de una fuente externa que pudiera desaparecer.
+La derivación se valida sola: los ratios que produce son los reales (AAPL 20:1,
+MSFT 30:1, KO 5:1, TSLA 15:1) y cinco CEDEARs independientes coinciden en el
+valor actual dentro del 0,6 %.
+
+Esa validación reveló una limitación que obligó a acotar el alcance: **los ratios
+de conversión de los CEDEARs cambian con el tiempo**, y solo se conocen los
+vigentes. Hacia atrás se desalinean —en 2022 un CEDEAR implicaba un CCL de 473 y
+otro de 731— de modo que la serie conserva únicamente el tramo donde los
+instrumentos coinciden entre sí, y descarta el resto. Que varios instrumentos
+independientes arrojen el mismo número es la evidencia de que el ratio vigente
+es el correcto; cuando discrepan, no hay forma de saber cuál creer, y se prefiere
+no tener dato antes que tener uno inventado.
+
+En la práctica eso reduce la serie utilizable a las sesiones posteriores a
+septiembre de 2024, suficientes para los modelos pero no para todo el período.
+
+**Limitación remanente:** la serie convertida captura el riesgo del activo medido
+en dólares, pero la exposición cambiaria deja de ser visible como factor
+separado.
 
 **Costo computacional medido:**
 
@@ -445,7 +478,7 @@ encuentra pendiente.
    determina.
 2. **Cuentas de usuario persistentes**, sustituyendo las sesiones efímeras.
 3. **Límites de frecuencia externalizados**, para superar la limitación de §8.
-4. **Ampliación del universo** más allá de 503 instrumentos, y cobertura de
+4. **Ampliación del universo** más allá de 504 instrumentos, y cobertura de
    bonos individuales, que la fuente actual no provee.
 5. **Reducción del tiempo de respuesta en frío**, hoy el principal obstáculo de
    experiencia de uso.

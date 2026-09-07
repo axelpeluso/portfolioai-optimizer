@@ -261,6 +261,113 @@ def fetch_all(tickers: list[str], start: str, end: str, batch_size: int,
     return out.sort_index()
 
 
+# ── instrumentos en otra moneda ───────────────────────────────
+CONVERTED_JSON = BASE_DIR / "converted.json"
+
+# Dispersion maxima tolerada entre los CCL implicitos de cada CEDEAR. Si crecen
+# por encima de esto, la derivacion esta fallando y es preferible no convertir
+# que convertir con un tipo de cambio equivocado.
+CCL_MAX_SPREAD = 0.05
+
+
+def _median(vals: list[float]) -> float:
+    v = sorted(vals)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def build_ccl(fetch, cfg: dict) -> tuple[pd.Series | None, dict]:
+    """Serie de CCL derivada de la relacion CEDEAR / subyacente.
+
+    Asi se calcula el CCL en la practica, y tiene la ventaja de no depender de
+    ninguna fuente externa que pudiera desaparecer: si tenemos precios de
+    CEDEARs y de sus subyacentes, tenemos el tipo de cambio.
+    """
+    refs = {k: v for k, v in cfg.get("ccl_reference", {}).items()
+            if not k.startswith("_")}
+    if not refs:
+        return None, {"error": "sin CEDEARs de referencia"}
+
+    simbolos = list(refs) + [sub for sub, _ in refs.values()]
+    datos = fetch(sorted(set(simbolos)))
+    if datos.empty:
+        return None, {"error": "no se pudieron bajar los CEDEARs de referencia"}
+
+    implicitos = {}
+    for ced, (sub, ratio) in refs.items():
+        if ced in datos.columns and sub in datos.columns:
+            serie = datos[ced] / datos[sub] * ratio
+            implicitos[ced] = serie.dropna()
+    if len(implicitos) < 3:
+        return None, {"error": f"solo {len(implicitos)} pares utilizables (minimo 3)"}
+
+    marco = pd.DataFrame(implicitos).dropna(how="all")
+    ccl = marco.median(axis=1)
+
+    # Los ratios de conversion de los CEDEARs CAMBIAN con el tiempo, y solo
+    # conocemos los actuales. Hacia atras se desalinean: en 2022 AAPL implicaba
+    # un CCL de 473 y MSFT de 731, y ambos no pueden ser correctos.
+    #
+    # En vez de elegir uno, se conserva unicamente el tramo donde los CEDEARs
+    # coinciden entre si. Que varios instrumentos independientes den el mismo
+    # numero es la evidencia de que el ratio vigente es el correcto; cuando
+    # discrepan, no sabemos cual creer y preferimos no tener dato a tener uno
+    # inventado.
+    disp = ((marco.max(axis=1) - marco.min(axis=1)) / ccl)
+    confiable = ccl[disp <= CCL_MAX_SPREAD].dropna()
+
+    info = {"pares": len(implicitos),
+            "sesiones_totales": int(ccl.notna().sum()),
+            "sesiones_confiables": int(len(confiable)),
+            "dispersion_mediana": round(float(disp.dropna().median()), 4)}
+    if confiable.empty:
+        return None, {**info, "error": "ningun tramo con CEDEARs coincidentes"}
+    info["desde"] = str(confiable.index[0].date())
+    info["ultimo"] = round(float(confiable.iloc[-1]), 2)
+    descartadas = info["sesiones_totales"] - info["sesiones_confiables"]
+    if descartadas:
+        info["descartadas"] = descartadas
+    return confiable, info
+
+
+def add_converted(frame: pd.DataFrame, fetch, log_fn) -> pd.DataFrame:
+    """Incorpora al marco los instrumentos definidos en converted.json."""
+    if not CONVERTED_JSON.exists():
+        return frame
+    cfg = json.loads(CONVERTED_JSON.read_text(encoding="utf-8"))
+    instr = cfg.get("instruments") or {}
+    if not instr:
+        return frame
+
+    log_fn("")
+    log_fn("Instrumentos en otra moneda:")
+    ccl, info = build_ccl(fetch, cfg)
+    if ccl is None:
+        log_fn(f"  CCL no disponible ({info.get('error')}) — se omiten")
+        return frame
+    log_fn(f"  CCL derivado de {info['pares']} CEDEARs: "
+           f"{info['sesiones_confiables']} sesiones utilizables desde {info['desde']}, "
+           f"ultimo {info['ultimo']:,.2f}")
+    if info.get("descartadas"):
+        log_fn(f"  {info['descartadas']} sesiones descartadas: los CEDEARs no coinciden "
+               f"(sus ratios de conversion cambiaron y solo conocemos los actuales)")
+
+    fuentes = fetch([v["source"] for v in instr.values()])
+    for destino, v in instr.items():
+        src = v["source"]
+        if src not in fuentes.columns:
+            log_fn(f"  {destino}: sin datos de {src}, se omite")
+            continue
+        conv = (fuentes[src] / ccl).dropna()
+        if conv.empty:
+            log_fn(f"  {destino}: sin fechas en comun con el CCL, se omite")
+            continue
+        frame[destino] = conv
+        log_fn(f"  {destino} <- {src} / CCL   {len(conv)} sesiones, "
+               f"ultimo USD {conv.iloc[-1]:,.2f}")
+    return frame
+
+
 def validate(new: pd.DataFrame, old: pd.DataFrame | None,
              expected: list[str], min_coverage: float) -> list[str]:
     """Return a list of problems. Empty list means the frame is safe to write."""
@@ -374,6 +481,13 @@ def main() -> int:
         return 1
     coverage_report(fresh, "downloaded")
 
+    # Instrumentos en otra moneda: se convierten con el CCL derivado de CEDEARs,
+    # porque el optimizador no distingue monedas y una serie en ARS junto a
+    # otras en USD se trataria como comparable sin serlo.
+    def _fetch(syms):
+        return fetch_all_chart(syms, start, end, args.workers, args.retries, args.pause)
+    fresh = add_converted(fresh, _fetch, log)
+
     # Fresh values win; fall back to what we already had.
     merged = fresh.combine_first(old) if old is not None else fresh
     merged = merged.reindex(columns=[t for t in tickers if t in merged.columns])
@@ -395,12 +509,19 @@ def main() -> int:
         log(f"\n  +{added} new row(s); last date "
             f"{old.index[-1].date()} -> {merged.index[-1].date()}")
         if added == 0 and merged.index[-1] == old.index[-1]:
-            # Still worth writing if we healed gaps in existing rows.
-            filled = int(old.isna().sum().sum() - merged.isna().sum().sum())
-            if filled <= 0:
+            # Columnas nuevas: hay que escribir aunque no haya filas nuevas. Un
+            # instrumento agregado trae huecos donde no existia, asi que contar
+            # NaN daria negativo y concluiria que no hay nada que hacer.
+            agregadas = sorted(set(merged.columns) - set(old.columns))
+            filled = int(old.isna().sum().sum()
+                         - merged[old.columns].isna().sum().sum())
+            if not agregadas and filled <= 0:
                 log("  Already current — nothing to write.")
                 return 2
-            log(f"  Backfilled {filled} previously-missing value(s).")
+            if agregadas:
+                log(f"  {len(agregadas)} instrumento(s) nuevo(s): {', '.join(agregadas)}")
+            if filled > 0:
+                log(f"  Backfilled {filled} previously-missing value(s).")
 
     if args.dry_run:
         log("\nDry run — nothing written.")

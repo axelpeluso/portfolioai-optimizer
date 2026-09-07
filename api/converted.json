@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "que_es": "Instrumentos que cotizan en otra moneda y se incorporan al universo convertidos a USD.",
+    "por_que": "El optimizador no distingue monedas: solo ve numeros. Una serie en ARS junto a otras en USD se trataria como comparable sin serlo. Convertir es la unica forma honesta de incluirlas.",
+    "que_tipo_de_cambio": "Para instrumentos argentinos se usa el CCL (contado con liquidacion), no el oficial. El oficial fue un precio administrado: la brecha llego al 132% en 2022, asi que convertir con el habria inflado al doble el valor en dolares de 2021-2023.",
+    "de_donde_sale_el_CCL": "Se deriva de la relacion entre CEDEARs y sus subyacentes, que es como se calcula en la practica. No se toma de ninguna fuente externa que pudiera desaparecer.",
+    "validacion": "Los ratios derivados salen limpios (AAPL 20:1, MSFT 30:1, KO 5:1, TSLA 15:1 — los reales) y cinco CEDEARs independientes coinciden dentro del 0.6%. Si esa dispersion creciera, la derivacion estaria fallando.",
+    "limitacion": "La serie convertida captura el riesgo del activo medido en dolares, pero la exposicion cambiaria deja de ser visible como factor separado."
+  },
+
+  "ccl_reference": {
+    "_nota": "CEDEAR -> [subyacente, cuantos CEDEARs equivalen a una accion]. Se usa la mediana entre todos para que un dato malo de uno no arrastre la serie.",
+    "AAPL.BA":  ["AAPL", 20.0],
+    "MSFT.BA":  ["MSFT", 30.0],
+    "KO.BA":    ["KO", 5.0],
+    "GOOGL.BA": ["GOOGL", 57.5],
+    "TSLA.BA":  ["TSLA", 15.0]
+  },
+
+  "instruments": {
+    "MIRG": {
+      "source": "MIRG.BA",
+      "currency": "ARS",
+      "rate": "CCL",
+      "name": "Mirgor SACIFIA (ARS convertido a USD al CCL)"
+    }
+  }
+}

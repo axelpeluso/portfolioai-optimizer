@@ -87,7 +87,7 @@ explicita.
 | Backend | ~3.300 lineas Python (FastAPI, en Railway) |
 | Frontend | ~3.400 lineas (vanilla JS + Chart.js, en Vercel) |
 | Tests | **80**, en CI sobre cada push |
-| Universo | 503 instrumentos: acciones, ETFs sectoriales y de bonos, commodities, cripto |
+| Universo | 504 instrumentos: acciones, ETFs sectoriales y de bonos, commodities, cripto |
 | Historial | 2021-01-04 → 2026-09-04 (1.425 sesiones), refresco semanal automatizado |
 | Tiempo de corrida | ~40 s en frio (15 tickers), instantaneo con cache |
 
@@ -128,7 +128,7 @@ Las solicitudes de demo y el uso de funciones se registran en `/analytics`.
    detalle de lotes fiscales.
 2. **Cuentas de usuario.** Hoy las sesiones son efimeras; hacen falta cuentas
    persistentes para que la conexion sobreviva entre visitas.
-3. **Ampliar el universo** mas alla de 503 instrumentos.
+3. **Ampliar el universo** mas alla de 504 instrumentos.
 4. **Rendimiento**: la corrida en frio de 40 s es el mayor obstaculo de
    experiencia.
 
