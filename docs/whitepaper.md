@@ -410,6 +410,31 @@ identificada no se declare gravable; que el optimizador con los modos
 desactivados produzca exactamente el resultado previo a su existencia; y que un
 cuerpo de petición de tamaño normal no sea rechazado por los límites de abuso.
 
+### Validación empírica
+
+Se realizó una evaluación walk-forward con rebalanceo trimestral (14 decisiones,
+enero 2023 – abril 2026), moviendo la fecha de corte en cada iteración para que
+los modelos no vean datos posteriores, y desactivando la caché —cuya clave no
+incluye la fecha— para que las iteraciones no compartan modelos.
+
+Sobre tres carteras distintas, el ratio de Sharpe de la cartera optimizada superó
+al de mantenerla sin cambios en las tres, con un margen que va de marginal (1,11
+contra 1,06 en una cartera de fondos ya diversificada) a sustancial (0,85 contra
+0,44 en una concentrada en tecnología). La volatilidad realizada fue menor en los
+tres casos.
+
+Un resultado incómodo merece registro: en la cartera genérica la configuración
+por defecto quedó **por debajo** de no hacer nada (1,35 contra 1,56), con 282 % de
+rotación acumulada, y cada incremento de la penalización de operaciones mejoró
+retorno, Sharpe y caída máxima a la vez. En esa cartera la rotación destruyó
+valor. En las otras dos, en cambio, la penalización lo empeoró levemente, de modo
+que la evidencia no respalda activarla por defecto.
+
+Los resultados **no corrigen el sesgo de supervivencia**: el universo se eligió
+en 2026 y contiene los instrumentos que sobrevivieron. Catorce rebalanceos sobre
+un único régimen de mercado no distinguen habilidad de suerte. El detalle
+completo, con todas las limitaciones, está en `docs/backtest-results.md`.
+
 ### Una nota sobre metodología
 
 La integración con intermediarios se escribió contra la documentación del SDK y

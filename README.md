@@ -84,6 +84,7 @@ Final Project/
 │   ├── tax_profiles.json       ← hand-verified asset tax character (REIT/bond/…)
 │   ├── refresh_prices.py       ← rebuild prices.csv from Yahoo (see workflow)
 │   ├── expand_universe.py      ← valida candidatos y amplía tickers.json
+│   ├── backtest.py             ← validación walk-forward (ver docs/)
 │   ├── converted.json          ← instrumentos en otra moneda (ARS→USD vía CCL)
 │   ├── test_api.py             ← pytest smoke tests for the core endpoints
 │   ├── test_snaptrade.py       ← reconciliation + auth-gate tests
@@ -102,6 +103,7 @@ Final Project/
 │   └── portfolio_optimizer.ipynb   ← full ML walk-through
 ├── docs/
 │   ├── whitepaper.md           ← documento técnico completo (modelos, validación, límites)
+│   ├── backtest-results.md     ← evidencia walk-forward y sus límites
 │   ├── executive-summary.md    ← qué es, cómo funciona, estado medido, límites
 │   ├── demo-script.md          ← guion de demo paso a paso + plan de contingencia
 │   ├── snaptrade-setup.md      ← brokerage import: credentials, table, cleanup
