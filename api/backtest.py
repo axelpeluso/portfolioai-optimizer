@@ -102,6 +102,8 @@ def main() -> int:
                    help="sesiones entre rebalanceos (default: trimestral)")
     p.add_argument("--modos", default="off,moderate",
                    help="modos del optimizador a comparar")
+    p.add_argument("--cov-window", type=int, default=None,
+                   help="sesiones para la covarianza (default: toda la ventana)")
     p.add_argument("--costo-bps", type=float, default=10.0,
                    help="costo por operar, en puntos basicos sobre la rotacion")
     args = p.parse_args()
@@ -139,7 +141,8 @@ def main() -> int:
             opt.END_DATE = fecha.strftime("%Y-%m-%d")   # el modelo no ve mas alla
             tenencias = {t: anterior.get(t, 0.0) * 100_000 for t in tickers}
             try:
-                r = opt.run_full_analysis(tickers, tenencias, turnover_penalty=penal)
+                r = opt.run_full_analysis(tickers, tenencias, turnover_penalty=penal,
+                                          cov_window=args.cov_window)
                 w = r["optimization"]["optimal_weights"]
             except Exception as e:
                 print(f"  {fecha.date()}: fallo ({type(e).__name__}), se mantiene")

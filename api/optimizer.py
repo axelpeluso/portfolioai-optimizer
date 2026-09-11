@@ -417,7 +417,8 @@ def blend_returns(ticker, rf_pred, hist_ret, r2, blend=0.3):
 
 # ── 8. MASTER FUNCTION ───────────────────────────────────────
 def run_full_analysis(tickers: list, current_holdings: dict,
-                      turnover_penalty=None, tax_weights=None) -> dict:
+                      turnover_penalty=None, tax_weights=None,
+                      cov_window=None) -> dict:
     """Full pipeline. With both optional arguments unset the result is identical
     to the pre-tax-disclosure implementation — see test_optimizer_modes.py."""
     # 1. Data
@@ -461,7 +462,14 @@ def run_full_analysis(tickers: list, current_holdings: dict,
 
     # 7. Covariance con Ledoit-Wolf shrinkage
     from sklearn.covariance import LedoitWolf
-    lw         = LedoitWolf().fit(returns[tickers])
+    # cov_window=None usa toda la ventana (comportamiento historico). Un valor
+    # entero limita la covarianza a las ultimas N sesiones: la volatilidad y las
+    # correlaciones cambian de regimen, y una covarianza incondicional promedia
+    # 2022 con 2023 como si fueran lo mismo.
+    ret_cov    = returns[tickers]
+    if cov_window and len(ret_cov) > cov_window:
+        ret_cov = ret_cov.iloc[-cov_window:]
+    lw         = LedoitWolf().fit(ret_cov)
     cov_matrix = lw.covariance_ * 252
 
     # 8. Optimize

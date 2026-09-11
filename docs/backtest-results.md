@@ -116,6 +116,65 @@ la fila de métricas que explica el resultado de esta validación.
 
 ---
 
+## De dónde viene realmente el valor
+
+Tres mediciones sucesivas convergen en la misma conclusión, y obligan a revisar
+la narrativa del producto.
+
+**1. El Random Forest no aporta.** Sobre 50 instrumentos, el r² fuera de muestra
+tiene mediana **−0,405** (negativo significa peor que usar el promedio) y solo 10
+dan positivo. Evaluado como problema de ordenamiento —más fácil que acertar el
+nivel— el *information coefficient* es **−0,0197**, con apenas 89 de 209 fechas
+positivas: peor que una moneda.
+
+Vale destacar que el diseño ya se protegía de esto: `blend_returns` pondera la
+predicción por `clip(r², 0, 1) × 0,3`, de modo que un r² negativo le asigna peso
+**cero**. Para cerca del 80 % de los instrumentos el Random Forest no interviene
+y el retorno esperado es la media histórica pura.
+
+**2. GARCH tampoco, a nuestros horizontes.** Medido contra la volatilidad
+realizada:
+
+| Horizonte | Histórico | EWMA | GARCH(1,1) | Mejora |
+|---|---:|---:|---:|---:|
+| 5 días | 11,49 pp | 10,84 pp | **10,51 pp** | +8,5 % |
+| 10 días | 9,59 pp | 9,13 pp | **9,04 pp** | +5,8 % |
+| 21 días | **7,80 pp** | 8,82 pp | 7,94 pp | −1,8 % |
+| 63 días | **6,85 pp** | 7,57 pp | 7,02 pp | −2,5 % |
+
+GARCH gana claramente a 5-10 días y pierde a 21-63. Es comportamiento esperado:
+el pronóstico revierte a la varianza incondicional, así que a horizontes largos
+converge al promedio histórico y solo agrega ruido de estimación. Nuestros
+horizontes —21 días para el puntaje de riesgo, 63 para el rebalanceo— son
+precisamente donde no ayuda.
+
+**3. La covarianza condicional tampoco.** Restringirla a ventanas móviles de 2
+años, 1 año o 6 meses movió el Sharpe realizado de 1,35 a 1,38 —dentro del ruido
+para 14 observaciones— y aumentó la rotación del 282 % al 313 %.
+
+**Por qué ninguna de las tres mejora nada.** Más de la mitad de los pesos quedan
+fijados en una cota del optimizador:
+
+| Cartera | Pesos en cotas | Realmente libres |
+|---|---:|---:|
+| Genérica | 4 de 7 | 3 |
+| Concentrada | 4 de 8 | 4 |
+| Fondos | 4 de 6 | 2 |
+
+El problema está **dominado por las restricciones**, no por la optimización. Y
+esas restricciones —peso máximo del 20 %, 30 % o 40 % según el régimen; piso para
+los activos defensivos— se derivan del puntaje del MLP.
+
+Dicho de otro modo: **el valor del producto no viene de predecir retornos ni de
+estimar la covarianza con más precisión, sino de imponer diversificación adaptada
+al régimen de mercado.** Refinar los insumos de una optimización cuyo resultado
+fija mayormente las cotas no puede mover la aguja.
+
+Es coherente con todo lo demás que se midió: la volatilidad bajó en las tres
+carteras, el Sharpe mejoró en las tres, y el retorno esperado no predijo nada.
+
+---
+
 ## Conclusión honesta
 
 La herramienta **reduce riesgo de manera consistente y mejora el retorno ajustado
