@@ -430,6 +430,14 @@ retorno, Sharpe y caída máxima a la vez. En esa cartera la rotación destruyó
 valor. En las otras dos, en cambio, la penalización lo empeoró levemente, de modo
 que la evidencia no respalda activarla por defecto.
 
+La medición más relevante fue la **calibración del retorno esperado**. Esa cifra
+es la media histórica anualizada bajo los pesos óptimos, no una proyección, y
+comparada contra lo realizado en los tres meses siguientes a cada decisión acertó
+dentro de ±10 puntos solo **2 de 14 veces**, con errores de hasta 61 puntos —
+mayores que la magnitud a predecir. La interfaz dejó de rotularla como
+proyección en consecuencia. La volatilidad y el ratio de Sharpe, en cambio, se
+comportaron de forma estable.
+
 Los resultados **no corrigen el sesgo de supervivencia**: el universo se eligió
 en 2026 y contiene los instrumentos que sobrevivieron. Catorce rebalanceos sobre
 un único régimen de mercado no distinguen habilidad de suerte. El detalle

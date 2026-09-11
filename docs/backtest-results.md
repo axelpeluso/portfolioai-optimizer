@@ -62,6 +62,43 @@ defecto a partir de esta evidencia.
 
 ---
 
+## Calibración del retorno esperado: el hallazgo más importante
+
+La aplicación mostraba un "Optimal Return" en verde, junto a la volatilidad y el
+Sharpe. Un usuario razonablemente lo lee como un pronóstico. **No lo es**, y la
+medición lo confirma con contundencia.
+
+Ese número es la media histórica anualizada de la ventana de datos bajo los pesos
+óptimos, mezclada como mucho al 30 % con la predicción del Random Forest. Dicho
+de otro modo: *"si los próximos meses se parecen al promedio de 2021-2026"*.
+
+Comparando lo prometido en cada rebalanceo contra lo efectivamente ocurrido en
+los tres meses siguientes:
+
+| Fecha | Prometido | Realizado | Error |
+|---|---:|---:|---:|
+| 2023-01-04 | −8,7 % | +52,4 % | −61,1 |
+| 2023-04-05 | +3,2 % | +40,4 % | −37,1 |
+| 2023-07-07 | +4,2 % | −11,8 % | +15,9 |
+| 2024-07-09 | +13,4 % | +9,0 % | +4,4 |
+| 2025-01-07 | +16,0 % | −9,2 % | +25,1 |
+| 2025-04-09 | +14,5 % | +63,7 % | −49,2 |
+| 2026-01-09 | +20,0 % | −2,4 % | +22,4 |
+
+**Solo 2 de 14 predicciones cayeron dentro de ±10 puntos porcentuales.** El sesgo
+medio es de −15,5 % y los errores llegan a 61 puntos: son *mayores que la
+magnitud que se intenta predecir*.
+
+La conclusión es directa: **el retorno esperado no tiene valor predictivo a tres
+meses y no debe presentarse como si lo tuviera.** La volatilidad y el Sharpe, en
+cambio, se comportaron de forma estable y consistente con la teoría.
+
+A raíz de esto la interfaz dejó de rotular esas cifras como "annualized" —lectura
+que sugiere proyección— y ahora dice **"historical average"**, con una nota bajo
+la fila de métricas que explica el resultado de esta validación.
+
+---
+
 ## Lo que estos números NO prueban
 
 - **Sesgo de supervivencia, no corregido.** Los 504 instrumentos se eligieron

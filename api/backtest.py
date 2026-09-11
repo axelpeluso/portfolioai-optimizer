@@ -134,6 +134,7 @@ def main() -> int:
         penal = None if modo == "off" else modo
         print(f"--- modo: {modo} ---")
         pesos_hist, anterior = [], dict(inicial)
+        calibracion = []
         for n, fecha in enumerate(fechas, 1):
             opt.END_DATE = fecha.strftime("%Y-%m-%d")   # el modelo no ve mas alla
             tenencias = {t: anterior.get(t, 0.0) * 100_000 for t in tickers}
@@ -144,12 +145,34 @@ def main() -> int:
                 print(f"  {fecha.date()}: fallo ({type(e).__name__}), se mantiene")
                 w = anterior
             pesos_hist.append(w)
+            # Calibracion: que prometio el modelo vs que ocurrio despues.
+            i_fecha = precios.index.get_loc(fecha)
+            fin = min(i_fecha + args.cada, len(precios) - 1)
+            if fin > i_fecha:
+                tramo = precios.iloc[i_fecha:fin + 1]
+                pesos_v = np.array([w.get(t, 0.0) for t in precios.columns])
+                val = (tramo / tramo.iloc[0] * pesos_v).sum(axis=1)
+                periodos = TRADING_DAYS / (fin - i_fecha)
+                real = val.iloc[-1] ** periodos - 1
+                calibracion.append((fecha, r["optimization"]["max_sharpe_metrics"]["return"], real))
             anterior = w
             rot = sum(abs(w.get(t, 0) - anterior.get(t, 0)) for t in tickers) / 2
             print(f"  [{n}/{len(fechas)}] {fecha.date()}  riesgo "
                   f"{r['risk_score']:.3f}  top: "
                   f"{max(w, key=w.get)} {max(w.values()):.0%}")
         resultados[modo] = curva(precios, pesos_hist, fechas, args.costo_bps)
+        if calibracion:
+            print()
+            print(f"  calibracion del retorno esperado ({modo}):")
+            print(f"    {'fecha':12} {'prometido':>11} {'realizado':>11} {'error':>10}")
+            errs = []
+            for f, pred, real in calibracion:
+                errs.append(pred - real)
+                print(f"    {str(f.date()):12} {pred:>10.1%} {real:>10.1%} {pred-real:>+9.1%}")
+            sesgo = sum(errs) / len(errs)
+            aciertos = sum(1 for e in errs if abs(e) < 0.10)
+            print(f"    sesgo medio: {sesgo:+.1%}   "
+                  f"dentro de +/-10 puntos: {aciertos}/{len(errs)}")
 
     opt.END_DATE = end_original
 
